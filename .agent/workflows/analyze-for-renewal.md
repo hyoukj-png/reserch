@@ -97,13 +97,14 @@ npx -y lighthouse {URL} --output json --output-path output/{SITE_NAME}/lighthous
     - **복제용 프롬프트 가이드 생성**: 타 프로젝트에서 해당 기능을 구현하기 위한 AI 명령어(Prompt) 요약
 3. `08-renewal-insights.md` 작성
 4. **`BENCHMARK_RECIPE.md`** 작성 (기술-페이지 매핑 + 복제용 명령어 포함)
+5. **`MASTER_REPLICATION_PROMPT.md`** 작성 (레시피 전체를 한 장으로 흡수한 자기완결 빌드 지시서 + 멀티 에이전트 역할 가이드 + 안전 치환). 형식은 `.claude/skills/benchmark-recipe/references/master-prompt-format.md` 준수
 
 ---
 
 ## Phase 8: 최종 리포트 및 활용 안내
 
 1. `COMPLETION_REPORT.md` 한국어 종합 리포트 자동 생성
-2. 사용자에게 결과 요약 보고 및 **`BENCHMARK_RECIPE.md`** 활용 방법 안내
+2. 사용자에게 결과 요약 보고 및 **`BENCHMARK_RECIPE.md` / `MASTER_REPLICATION_PROMPT.md`** 활용 방법 안내
 3. 타 프로젝트 적용을 위한 구체적인 지시어 예시 제공
 
 ---

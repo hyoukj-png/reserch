@@ -14,8 +14,8 @@ description: 웹사이트 리뉴얼 분석 산출물의 완전성·정합성·�
 ## 검증 항목 (경계면 교차 비교)
 
 ### 1. 완전성
-기대 산출물 5종이 모두 존재하고 비어있지 않은가:
-`05-components.md`, `07-performance-a11y.md`, `08-renewal-insights.md`, `BENCHMARK_RECIPE.md`, `COMPLETION_REPORT.md`. 누락 시 책임 에이전트 명시.
+기대 산출물 6종이 모두 존재하고 비어있지 않은가:
+`05-components.md`, `07-performance-a11y.md`, `08-renewal-insights.md`, `BENCHMARK_RECIPE.md`, `MASTER_REPLICATION_PROMPT.md`, `COMPLETION_REPORT.md`. 누락 시 책임 에이전트 명시.
 
 ### 2. 기술→페이지 매핑 정합성 (환각 검증, 최우선)
 `BENCHMARK_RECIPE.md`와 `_workspace/tech_findings.md`가 인용한 페이지 경로가 `pages.json`에 실재하는가. **스크립트로 대조:**
@@ -52,7 +52,18 @@ IA·CTA 분석이 `01-site-structure`/`04-content-inventory`/`pages.json`과 일
 ### 5. 레시피 실행 가능성
 `BENCHMARK_RECIPE.md`의 각 레시피가 무엇을·어디서·어떻게(프롬프트) 3요소를 갖췄는가. 프롬프트 블록이 비어있거나 "멋지게 만들어줘" 수준이면 warning.
 
-### 6. 한국어 품질
+### 6. 마스터 프롬프트 전수 흡수 (near-clone 보증)
+`MASTER_REPLICATION_PROMPT.md`가 `BENCHMARK_RECIPE.md`의 **모든 레시피를 흡수**했는가. 레시피 제목 목록을 뽑아 마스터 본문에 대응 컴포넌트/섹션이 있는지 대조 — 빠진 레시피가 있으면 warning(near-clone 누락). 또한 마스터에 ① 멀티 에이전트 역할 가이드, ② 안전(법적) 치환 규칙(이미지·문장·신원·면책), ③ 자기완결성(외부 파일 참조 없이 빌드 가능)이 있는지 확인. 없으면 warning.
+
+```bash
+# 레시피 제목 수 vs 마스터의 컴포넌트/섹션 헤더 수 개략 대조
+grep -cE "^## 레시피 [0-9]+" output/{site}/BENCHMARK_RECIPE.md
+grep -cE "^(###|##) " output/{site}/MASTER_REPLICATION_PROMPT.md
+grep -qE "빌드 에이전트 구성|역할별" output/{site}/MASTER_REPLICATION_PROMPT.md && echo "역할가이드 OK" || echo "역할가이드 누락"
+grep -qE "데모|가상|실제 의료기관 정보가 아닙니다" output/{site}/MASTER_REPLICATION_PROMPT.md && echo "면책 OK" || echo "면책 누락"
+```
+
+### 7. 한국어 품질
 - 본문이 한국어인가, 기술 용어는 영문 유지했는가
 - 깨진 표, 빈 섹션, 잔존 플레이스홀더(`{site}`, `{사이트명}`, TODO, `XXX`)가 있는가 — grep으로 일괄 점검
 

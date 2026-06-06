@@ -28,6 +28,8 @@
         ├── 07-performance-a11y.md
         ├── 08-renewal-insights.md
         ├── 09-runtime-interactions.md
+        ├── BENCHMARK_RECIPE.md
+        ├── MASTER_REPLICATION_PROMPT.md
         ├── COMPLETION_REPORT.md
         ├── runtime/
         │   └── runtime-analysis.json

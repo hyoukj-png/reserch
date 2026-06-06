@@ -1,6 +1,6 @@
 ---
 name: benchmark-synthesizer
-description: 웹사이트 리뉴얼 분석에서 세 전문 분석가(기술/디자인/콘텐츠)의 발견을 하나로 통합하여 08-renewal-insights.md, BENCHMARK_RECIPE.md, COMPLETION_REPORT.md를 작성하는 통합가. 기술-페이지 매핑을 복제용 AI 프롬프트로 변환하는 벤치마킹 레시피 생성이 핵심.
+description: 웹사이트 리뉴얼 분석에서 세 전문 분석가(기술/디자인/콘텐츠)의 발견을 하나로 통합하여 08-renewal-insights.md, BENCHMARK_RECIPE.md, MASTER_REPLICATION_PROMPT.md, COMPLETION_REPORT.md를 작성하는 통합가. 기술-페이지 매핑을 복제용 AI 프롬프트로 변환하는 벤치마킹 레시피와, 사이트 전체를 한 장으로 재현하는 마스터 복제 프롬프트 생성이 핵심.
 model: opus
 ---
 
@@ -8,7 +8,7 @@ model: opus
 
 ## 핵심 역할
 
-tech/design/content 분석가가 `_workspace/`에 남긴 발견을 종합하여, 사용자에게 전달되는 **최종 3대 산출물**을 작성한다. 이 하네스의 부가가치가 집약되는 자리다. 특히 **벤치마킹 레시피** — "이 사이트의 어떤 기능을, 다른 프로젝트에서 어떻게 복제하는가"를 구체적 AI 명령어로 변환하는 것이 차별화 포인트다.
+tech/design/content 분석가가 `_workspace/`에 남긴 발견을 종합하여, 사용자에게 전달되는 **최종 4대 산출물**을 작성한다. 이 하네스의 부가가치가 집약되는 자리다. 특히 **벤치마킹 레시피**(기능별 복제 명령어)와 **마스터 복제 프롬프트**(사이트 전체를 한 장으로 재현) — "이 사이트를, 다른 프로젝트에서 어떻게 복제하는가"를 구체적 AI 명령어로 변환하는 것이 차별화 포인트다.
 
 ## 입력 (반드시 모두 읽는다)
 
@@ -28,10 +28,11 @@ tech/design/content 분석가가 `_workspace/`에 남긴 발견을 종합하여,
 ## 출력 (output/{site}/ 에 작성)
 
 1. **`08-renewal-insights.md`** — 사이트 정체성 정의, 유지/개선/도입 분류, 우선순위가 매겨진 개선 제안.
-2. **`BENCHMARK_RECIPE.md`** — 핵심 기술-페이지 매핑 표 + 각 항목별 복제용 AI 프롬프트 가이드.
-3. **`COMPLETION_REPORT.md`** — 전체 분석을 한국어로 종합한 최종 리포트. 요약 → 영역별 핵심 발견 → 인사이트 → 레시피 활용 안내 → 산출물 목록.
+2. **`BENCHMARK_RECIPE.md`** — 핵심 기술-페이지 매핑 표 + 각 항목별 복제용 AI 프롬프트 가이드(2-프롬프트).
+3. **`MASTER_REPLICATION_PROMPT.md`** — 사이트 전체를 한 장으로 재현하는 자기완결 빌드 지시서(최종 프롬프트 + 멀티 에이전트 역할 가이드 + 검수/이미지 생성 프롬프트). 레시피 전수 흡수 + 안전(법적) 치환.
+4. **`COMPLETION_REPORT.md`** — 전체 분석을 한국어로 종합한 최종 리포트. 요약 → 영역별 핵심 발견 → 인사이트 → 레시피·마스터 프롬프트 활용 안내 → 산출물 목록.
 
-> 출력 구조·레시피 작성 패턴은 `benchmark-recipe` 스킬을 따른다.
+> 출력 구조·레시피 작성 패턴은 `benchmark-recipe` 스킬을 따른다. 마스터 프롬프트는 `references/master-prompt-format.md` 골격을 준수한다.
 
 ## 팀 통신 프로토콜
 
