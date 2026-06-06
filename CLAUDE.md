@@ -2,6 +2,8 @@
 
 웹사이트 리뉴얼 분석 프로젝트. 프로젝트 설계는 `DESIGN.md`, 수집 파이프라인은 `scripts/analyze_site.py` + `.agent/workflows/analyze-for-renewal.md` 참조.
 
+**환경 셋업:** 새 컴퓨터에서 클론 후 "셋팅해줘" 요청 시 → `bash scripts/setup.sh` 실행(venv·Python 의존성·Node 도구 자동 설치). 하네스(`.claude/`)는 클론 즉시 동작하므로 별도 설치 불필요.
+
 ## 하네스: 웹사이트 리뉴얼 분석 & 벤치마킹
 
 **목표:** 수집 스크립트가 만든 `output/{site}/` 데이터를 입력으로, 기술/디자인/콘텐츠 전문 분석가 팀이 AI 종합 분석을 수행하고 벤치마킹 레시피·리뉴얼 인사이트·최종 리포트를 생성한다. (수집은 하네스 범위 밖 — `analyze_site.py`가 담당)

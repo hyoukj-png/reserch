@@ -8,11 +8,15 @@
 
 ## 다른 컴퓨터에서 이 환경 재현하기
 
-### 1. 클론
+### 1. 클론 + 한 번에 셋업 (권장)
 ```bash
 git clone https://github.com/hyoukj-png/reserch.git
 cd reserch
+bash scripts/setup.sh        # venv + Python 의존성 + Node 도구(lighthouse/playwright) 자동 설치
 ```
+> Claude Code에서 "클론해서 셋팅해줘"라고 하면 위 과정을 대신 실행합니다.
+
+수동으로 하려면 아래 2~3단계를 참고하세요.
 
 ### 2. Python 환경 (수집 스크립트)
 ```bash
