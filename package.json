@@ -7,7 +7,8 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "runtime": "node scripts/browser_analyze_site.js",
+    "test": "node --check scripts/browser_analyze_site.js"
   },
   "repository": {
     "type": "git",

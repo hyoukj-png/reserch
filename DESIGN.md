@@ -27,7 +27,10 @@
         ├── 06-interaction.md
         ├── 07-performance-a11y.md
         ├── 08-renewal-insights.md
+        ├── 09-runtime-interactions.md
         ├── COMPLETION_REPORT.md
+        ├── runtime/
+        │   └── runtime-analysis.json
         ├── screenshots/
         │   ├── pc/
         │   └── mobile/
@@ -88,9 +91,13 @@
 - Color Thief 이미지 팔레트
 - 폰트 & 간격 시스템 분석
 
-### Phase 6: 인터랙티브 & 성능 분석
+### Phase 6: 인터랙티브 & 런타임 분석
 
 - 동적 요소 (슬라이더, 모달, 탭, 폼)
+- Playwright Chromium 런타임 실행
+- PC/Mobile 전체 페이지 스크린샷
+- 클릭 후보 탐색 및 클릭 후 DOM 상태 변화 저장
+- visible dialog/modal, console error, network host 요약
 - Lighthouse 성능 측정
 
 ### Phase 7: AI 종합 분석
@@ -129,7 +136,7 @@ lighthouse (npx lighthouse)
 
 1. 사용자가 분석할 URL 제공
 2. `/analyze-for-renewal [URL]` 워크플로우 실행
-3. Phase 0~6: 자동 스크립트 실행 (Python + Playwright)
+3. Phase 0~6: 자동 스크립트 실행 (Python 정적 수집 + Playwright 런타임 보강)
 4. Phase 7: Antigravity가 수집 파일 읽고 AI 분석
 5. Phase 8: COMPLETION_REPORT.md 자동 생성
 6. 사용자에게 결과 보고

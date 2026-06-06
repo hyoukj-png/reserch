@@ -125,4 +125,5 @@ fi
 echo ""
 echo "🎉 셋업 완료. 다음으로:"
 echo "   1) 수집:  venv/bin/python scripts/analyze_site.py https://example.com/"
-echo "   2) 분석:  Claude Code에서 '리뉴얼 분석해줘' (하네스가 output/{site}/를 분석)"
+echo "   2) 런타임 보강: npm run runtime -- https://example.com/ --max-pages 8 --max-clicks 14"
+echo "   3) 분석:  Claude Code에서 '리뉴얼 분석해줘' (하네스가 output/{site}/를 분석)"

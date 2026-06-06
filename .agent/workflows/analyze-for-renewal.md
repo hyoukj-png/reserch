@@ -56,14 +56,23 @@ python scripts/analyze_site.py {URL}
 
 ---
 
-## Phase 4-3: 스크린샷 캡처
+## Phase 4-3: 런타임 브라우저 분석
 
-1. `browser_subagent`로 PC 전체 스크린샷 (1920x1080)
-   - URL 접속 후 전체 페이지 스크린샷
-   - 주요 하위 페이지 스크린샷
+1. Playwright Chromium으로 실제 JS 실행 후 동적 상태 수집
 
-2. `browser_subagent`로 Mobile 스크린샷 (375x812)
-   - 모바일 뷰포트로 동일 페이지 캡처
+```
+npm run runtime -- {URL} --max-pages 8 --max-clicks 14
+```
+
+2. 생성 산출물
+   - `09-runtime-interactions.md` — 클릭 후보, 클릭 후 변화, visible dialog, console error, network 요약
+   - `runtime/runtime-analysis.json` — 기계 판독용 런타임 상태
+   - `screenshots/pc/*.png` — PC 1920px 전체 페이지 스크린샷
+   - `screenshots/mobile/*.png` — Mobile 375px 전체 페이지 스크린샷
+
+3. 목적
+   - 정적 HTML 분석이 놓치는 모달, 탭, 모바일 메뉴, 아코디언, 클릭 후 DOM 변화를 보강
+   - Phase 7 AI 분석 시 `06-interaction.md`와 함께 1차 근거로 사용
 
 ---
 
@@ -80,6 +89,8 @@ npx -y lighthouse {URL} --output json --output-path output/{SITE_NAME}/lighthous
 ## Phase 7: AI 종합 분석 및 벤치마킹 레시피 생성
 
 1. `view_file`로 output 폴더의 모든 분석 파일 읽기
+   - `09-runtime-interactions.md`가 있으면 반드시 포함
+   - `runtime/runtime-analysis.json`이 있으면 클릭 후 상태와 console/network 근거로 사용
 2. 수집 데이터 기반 AI 종합 분석 및 **벤치마킹 데이터 추출** 수행:
     - 사이트 성격 정의 및 유지/개선 항목 분류
     - **핵심 기술 적용 페이지 매핑**: 어떤 기술(Swiper, 특정 폰트, 그리드 등)이 어떤 경로(URL)에서 핵심적으로 쓰였는지 분석

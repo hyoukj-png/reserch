@@ -3,6 +3,7 @@
 기존 웹사이트를 분석해 리뉴얼·벤치마킹에 필요한 데이터를 수집하고, **전문 에이전트 팀(하네스)**이 AI 종합 분석·벤치마킹 레시피·리포트를 생성하는 프로젝트.
 
 - 수집: `scripts/analyze_site.py` (정적 크롤링 + 기술/디자인/콘텐츠/모달 추출)
+- 런타임 보강: `scripts/browser_analyze_site.js` (Playwright 기반 스크린샷 + 클릭 후 동적 상태 수집)
 - 분석: Claude Code 하네스 (`.claude/agents/` + `.claude/skills/`) — 기술/디자인/콘텐츠 분석가 병렬 → 통합 → QA
 - 설계 상세: `DESIGN.md`, 하네스 트리거·이력: `CLAUDE.md`
 
@@ -42,8 +43,16 @@ npx playwright install chromium
 ```bash
 # (1) 수집 — 정적 데이터 + 모달/숨김 콘텐츠 자동 복구 → output/{site}/ 생성
 python scripts/analyze_site.py https://example.com/
-# (2) 분석 — Claude Code에서 하네스 실행 → 05/07/08-renewal-insights, BENCHMARK_RECIPE, COMPLETION_REPORT 생성
+# (2) 런타임 보강 — 실제 JS 실행, 스크린샷, 클릭 후 모달/탭/메뉴 상태 수집
+npm run runtime -- https://example.com/ --max-pages 8 --max-clicks 14
+# (3) 분석 — Claude Code에서 하네스 실행 → 05/07/08-renewal-insights, BENCHMARK_RECIPE, COMPLETION_REPORT 생성
 ```
+
+런타임 보강 산출물:
+- `output/{site}/09-runtime-interactions.md`
+- `output/{site}/runtime/runtime-analysis.json`
+- `output/{site}/screenshots/pc/*.png`
+- `output/{site}/screenshots/mobile/*.png`
 
 ## 저장소에 포함되는 것 / 제외되는 것
 
