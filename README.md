@@ -14,6 +14,8 @@ git clone https://github.com/hyoukj-png/reserch.git
 cd reserch
 bash scripts/setup.sh        # venv + Python 의존성 + Node 도구(lighthouse/playwright) 자동 설치
 ```
+> `python3`/`node`가 없으면 OS별 패키지 매니저(macOS=Homebrew, Linux=apt/dnf/yum/pacman, Windows=winget/choco)로 **자동 설치**까지 시도합니다. 시스템 패키지 설치 시 sudo 암호를 물을 수 있습니다.
+> 자동 설치를 끄려면: `SKIP_AUTO_INSTALL=1 bash scripts/setup.sh`
 > Claude Code에서 "클론해서 셋팅해줘"라고 하면 위 과정을 대신 실행합니다.
 
 수동으로 하려면 아래 2~3단계를 참고하세요.
