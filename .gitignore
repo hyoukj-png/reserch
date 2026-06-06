@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Output folder for generated analysis
+output/
+out*.txt
+
+# 다른 사이트 분석 데이터 (대용량, 아웃풋 성격)
+cheongnabit-com/
+
+# 위키 컴파일러 생성물 (.wiki-compiler.json이 소스에서 재생성)
+wiki/
+
+# 툴 상태 파일 (머신/세션 로컬)
+docs/.bkit-memory.json
+docs/.pdca-status.json
+.bkit-memory.json
+
+# Claude Code 로컬 전용 설정 (settings.json은 공유, local은 머신별)
+.claude/settings.local.json
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+node_modules

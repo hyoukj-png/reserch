@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "name": "Antigravity Research",
+  "sources": [
+    { "path": "./webstart/", "exclude": ["wiki/", "node_modules/", ".git/"] },
+    { "path": "./output/damha_co_kr/", "exclude": ["wiki/"] },
+    { "path": "./cheongnabit-com/", "exclude": ["wiki/", "node_modules/", ".git/"] }
+  ],
+  "output": "./wiki/",
+  "mode": "staging",
+  "auto_update": "prompt",
+  "article_sections": [
+    { "name": "요약", "description": "주제별 한눈에 보기", "required": true },
+    { "name": "목적과 범위", "description": "이 항목이 뭐하는 것인지, 누가 쓰는지" },
+    { "name": "주요 내용", "description": "핵심 정보, 구조, 키워드" },
+    { "name": "기술/시스템 사항", "description": "아키텍처, 설정, 파이프라인 (해당하는 경우)" },
+    { "name": "의사결정", "description": "왜 이렇게 구성했는지 (문서에 명시된 경우)" },
+    { "name": "주의사항", "description": "알아둬야 할 점, 제약사항" },
+    { "name": "출처", "description": "모든 원본 파일 역링크", "required": true }
+  ],
+  "topic_hints": [],
+  "link_style": "markdown"
+}
