@@ -1,11 +1,11 @@
 ---
 name: benchmark-recipe
-description: 웹사이트 리뉴얼 분석에서 세 전문 분석가(기술/디자인/콘텐츠)의 _workspace 발견을 통합하여 최종 산출물 4종(08-renewal-insights.md, BENCHMARK_RECIPE.md, MASTER_REPLICATION_PROMPT.md, COMPLETION_REPORT.md)을 작성하는 스킬. 기술-페이지 매핑을 복제용 AI 프롬프트로 변환하는 벤치마킹 레시피와, 사이트 전체를 한 장으로 재현하는 마스터 복제 프롬프트 생성이 핵심. benchmark-synthesizer 에이전트가 사용. "벤치마킹 레시피", "리뉴얼 인사이트", "최종 리포트", "복제용 프롬프트", "마스터 프롬프트", "사이트 통째로 복제", "분석 통합", "리포트 다시 써줘"를 요청하면 이 스킬을 사용하라.
+description: 웹사이트 리뉴얼 분석에서 세 전문 분석가(기술/디자인/콘텐츠)의 _workspace 발견을 통합하여 최종 산출물 5종(08-renewal-insights.md, BENCHMARK_RECIPE.md, MASTER_REPLICATION_PROMPT.md, PRD.md, COMPLETION_REPORT.md)을 작성하는 스킬. 기술-페이지 매핑을 복제용 AI 프롬프트로 변환하는 벤치마킹 레시피와, 사이트 전체를 한 장으로 재현하는 마스터 복제 프롬프트, 페이지별 제작 요구사항을 정의하는 리뉴얼 PRD 생성이 핵심. benchmark-synthesizer 에이전트가 사용. "벤치마킹 레시피", "리뉴얼 인사이트", "최종 리포트", "복제용 프롬프트", "마스터 프롬프트", "사이트 통째로 복제", "PRD", "제작 요구사항", "페이지 제작 명세", "분석 통합", "리포트 다시 써줘"를 요청하면 이 스킬을 사용하라.
 ---
 
 # 벤치마킹 레시피 & 통합 리포트 작성
 
-세 분석가의 발견을 종합하여 사용자에게 전달되는 최종 산출물 4종을 작성한다. 이 하네스의 부가가치가 집약되는 단계다.
+세 분석가의 발견을 종합하여 사용자에게 전달되는 최종 산출물 5종을 작성한다. 이 하네스의 부가가치가 집약되는 단계다.
 
 ## 왜 이렇게 하는가
 
@@ -18,6 +18,7 @@ description: 웹사이트 리뉴얼 분석에서 세 전문 분석가(기술/디
 - `_workspace/content_findings.md` — IA + 콘텐츠 + CTA 흐름
 - `00-summary.md` — 규모
 - 필요 시 `05-components.md`, `07-performance-a11y.md` 원본 교차 참조
+- **있으면** `10-design-tokens-structured.md` + `tokens/`(`tokens.dtcg.json`·`tokens.tailwind.js`·`tokens.css`) — computedStyle 기반 정확 토큰. 🎨 디자인 프롬프트의 컬러·타입·간격·radius·모션 수치를 **여기서 인용**하고, MASTER_REPLICATION_PROMPT에는 "정확한 토큰은 `tokens/tokens.dtcg.json`(또는 tailwind/css) 참조" 한 줄을 넣어 수신 AI가 토큰 파일을 직접 쓰게 한다(복제 정확도↑).
 
 **세 발견 파일이 모두 준비되기 전에는 통합을 시작하지 않는다.** 하나가 끝내 누락되면 "❌ {영역} 누락"으로 표시하고 나머지로 진행.
 
@@ -58,7 +59,12 @@ BENCHMARK_RECIPE의 레시피 전체와 08/07 인사이트를 **하나의 자기
 
 > 마스터 프롬프트의 골격·역할 가이드·레시피 매핑·자가점검은 `references/master-prompt-format.md`를 **반드시 정독**하라.
 
-### 6. 한국어 리포트 작성
+### 6. 리뉴얼 제작 PRD (PRD.md)
+BENCHMARK_RECIPE/MASTER가 *AI 복제용 프롬프트*라면, PRD는 *사람(기획·디자인·개발)이 읽고 제작 범위를 합의·착수*하는 문서다. `content_findings`의 페이지 맵을 골격으로, `08`의 유지/개선/도입을 **페이지별 요구사항·우선순위로 번역**한다. 구성: 개요/목표 → 페이지 맵(P0~P2) → 페이지별 요구사항(목적·섹션·컴포넌트·한글 콘텐츠·CTA·인터랙션·개선 반영) → 공통 컴포넌트/토큰 → 기능 요구사항 → 범위(MVP) → 성공기준/QA. 페이지·경로는 **pages.json 실재값만**, 개선은 **08에 실재하는 항목만** 연결.
+
+> PRD 구조·다른 산출물과의 경계·품질 기준·자가점검은 `references/prd-format.md`를 **반드시 정독**하라.
+
+### 7. 한국어 리포트 작성
 모든 산출물은 한국어, 기술 용어는 영문 유지(프로젝트 규약). 표·체크리스트·코드블록을 적극 활용.
 
 ## 출력 (output/{site}/ 에 작성)
@@ -72,8 +78,11 @@ BENCHMARK_RECIPE의 레시피 전체와 08/07 인사이트를 **하나의 자기
 ### `MASTER_REPLICATION_PROMPT.md`
 사이트 전체를 한 장으로 재현하는 자기완결 빌드 지시서(최종 프롬프트 + 멀티 에이전트 역할 가이드 + 검수 프롬프트 + 이미지 생성 프롬프트). `references/master-prompt-format.md` 골격 준수. 레시피 전수 흡수 + 안전 치환 필수.
 
+### `PRD.md`
+리뉴얼 제작 요구사항 정의서(페이지별 제작 명세). 페이지 맵(우선순위) → 페이지별 요구사항 → 공통 컴포넌트/토큰 → 기능 요구사항 → 범위(MVP) → 성공기준. `references/prd-format.md` 구조 준수. 경로는 pages.json 실재값만, 개선 반영은 08 근거만.
+
 ### `COMPLETION_REPORT.md`
-최종 종합 리포트. 구성: ① 요약(정체성 한 문장 + 규모) → ② 영역별 핵심 발견(기술/디자인/콘텐츠 각 3~5줄) → ③ 우선순위 인사이트 → ④ BENCHMARK_RECIPE·MASTER_REPLICATION_PROMPT 활용 안내 → ⑤ 전체 산출물 목록.
+최종 종합 리포트. 구성: ① 요약(정체성 한 문장 + 규모) → ② 영역별 핵심 발견(기술/디자인/콘텐츠 각 3~5줄) → ③ 우선순위 인사이트 → ④ BENCHMARK_RECIPE·MASTER_REPLICATION_PROMPT·PRD 활용 안내 → ⑤ 전체 산출물 목록.
 
 ## 자가 점검 (출력 전)
 
@@ -85,5 +94,7 @@ BENCHMARK_RECIPE의 레시피 전체와 08/07 인사이트를 **하나의 자기
 - [ ] 개선 제안이 임팩트×난이도로 정렬됐는가?
 - [ ] **MASTER_REPLICATION_PROMPT.md가 자기완결적이고, BENCHMARK_RECIPE의 모든 레시피를 흡수했는가?**
 - [ ] **마스터 프롬프트에 멀티 에이전트 역할 가이드 + 안전(법적) 치환 규칙이 들어갔는가?**
-- [ ] 네 산출물 모두 한국어 + 기술용어 영문 규약을 지켰는가?
+- [ ] **PRD의 페이지 맵 경로가 pages.json에 실재하고(신규는 명시), 각 P0 페이지가 목적·섹션·한글 콘텐츠·CTA·인터랙션을 채웠는가?**
+- [ ] **PRD의 "개선 반영"이 08에 실재하는 항목과 연결되고, 우선순위가 08의 임팩트×난이도와 정합하는가?**
+- [ ] 다섯 산출물 모두 한국어 + 기술용어 영문 규약을 지켰는가?
 - [ ] 플레이스홀더(`{site}`, TODO)가 남아 있지 않은가?

@@ -253,7 +253,7 @@ def phase2_detect_tech(url: str, html: str) -> dict:
 # ============================================================
 # Phase 3: 페이지 전체 탐색
 # ============================================================
-def phase3_crawl_pages(url: str, disallowed: list) -> list:
+def phase3_crawl_pages(url: str, disallowed: list, single_page: bool = False) -> list:
     print("\n" + "=" * 60)
     print("🗺️ Phase 3: 페이지 전체 탐색")
     print("=" * 60)
@@ -261,6 +261,28 @@ def phase3_crawl_pages(url: str, disallowed: list) -> list:
     domain = urlparse(url).netloc
     all_pages = set()
     pages_data = []
+
+    # 단일 페이지 모드: 크롤링/sitemap 생략, 제공된 URL만 수집
+    if single_page:
+        print("  📄 단일 페이지 모드 — 제공된 URL만 분석 (크롤링 생략)")
+        try:
+            res = requests.get(url, timeout=TIMEOUT, headers=HEADERS)
+            soup = BeautifulSoup(res.text, "html.parser")
+            desc_tag = soup.find("meta", {"name": "description"})
+            pages_data.append({
+                "url": url,
+                "status": res.status_code,
+                "title": soup.title.text.strip() if soup.title else "",
+                "description": desc_tag.get("content", "") if desc_tag else "",
+                "h1": [h.text.strip() for h in soup.find_all("h1")][:3],
+                "h2": [h.text.strip() for h in soup.find_all("h2")][:5],
+                "load_time_ms": round(res.elapsed.total_seconds() * 1000),
+                "html": res.text,
+            })
+            print("  ✅ 1개 페이지 메타 정보 수집 완료")
+        except Exception as e:
+            print(f"  ❌ 페이지 수집 실패: {e}")
+        return pages_data
 
     # Step 1: sitemap.xml 파싱
     sitemap_paths = ["/sitemap.xml", "/sitemap_index.xml", "/sitemap-index.xml"]
@@ -1456,6 +1478,12 @@ def main():
         default=False,
         help="전 페이지 기준 boilerplate 자동 감지 비활성화",
     )
+    parser.add_argument(
+        "--single-page",
+        action="store_true",
+        default=False,
+        help="크롤링 없이 제공된 URL 페이지 하나만 분석 (작업량·토큰 절약)",
+    )
     args = parser.parse_args()
 
     url = args.url.rstrip("/")
@@ -1464,6 +1492,7 @@ def main():
     save_pages = not args.no_pages
     use_trafilatura = not args.no_trafilatura
     detect_bp = not args.no_boilerplate
+    single_page = args.single_page
 
     site_name = get_site_name(url)
     output_dir = ensure_dirs(site_name)
@@ -1471,6 +1500,7 @@ def main():
     print(f"\n{'🚀' * 20}")
     print(f"  웹사이트 리뉴얼 분석 시작")
     print(f"  대상: {url}")
+    print(f"  범위: {'단일 페이지 (이 URL만)' if single_page else '전체 사이트 (크롤링)'}")
     print(f"  출력: {output_dir}")
     print(f"{'🚀' * 20}\n")
 
@@ -1486,7 +1516,7 @@ def main():
     tech_stack = phase2_detect_tech(url, access["html"])
 
     # Phase 3
-    pages_data = phase3_crawl_pages(url, access.get("disallowed_paths", []))
+    pages_data = phase3_crawl_pages(url, access.get("disallowed_paths", []), single_page=single_page)
 
     # Phase 4
     content = phase4_collect_content(

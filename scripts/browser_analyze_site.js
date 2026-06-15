@@ -10,6 +10,9 @@ const fs = require("fs");
 const path = require("path");
 const { URL } = require("url");
 const { chromium } = require("playwright");
+const { buildArtifacts } = require("./tokenize");
+
+const MAX_STYLE_SAMPLES = 4000;
 
 const DEFAULT_MAX_PAGES = 8;
 const DEFAULT_MAX_CLICKS = 14;
@@ -240,6 +243,56 @@ async function collectPageSignals(page) {
   });
 }
 
+async function collectComputedStyles(page, cap) {
+  return page.evaluate((maxSamples) => {
+    const INTERACTIVE_TAGS = new Set(["A", "BUTTON"]);
+    const INTERACTIVE_CLASS_RE = /\b(btn|button|cta|primary|action|link)\b/i;
+    const isInteractive = (el) => {
+      if (INTERACTIVE_TAGS.has(el.tagName)) return true;
+      const role = el.getAttribute("role") || "";
+      if (["button", "link", "menuitem", "tab"].includes(role)) return true;
+      return INTERACTIVE_CLASS_RE.test(el.className || "");
+    };
+    const visible = (el, st, rect) =>
+      st.visibility !== "hidden" && st.display !== "none" &&
+      Number(st.opacity || "1") > 0.05 && rect.width > 0 && rect.height > 0;
+
+    const all = document.querySelectorAll("*");
+    const step = Math.max(1, Math.floor(all.length / maxSamples));
+    const out = [];
+    for (let i = 0; i < all.length && out.length < maxSamples; i += step) {
+      const el = all[i];
+      let st, rect;
+      try { st = getComputedStyle(el); rect = el.getBoundingClientRect(); } catch (_) { continue; }
+      if (!visible(el, st, rect)) continue;
+      out.push({
+        interactive: isInteractive(el),
+        color: st.color,
+        backgroundColor: st.backgroundColor,
+        borderColor: st.borderTopColor,
+        backgroundImage: st.backgroundImage && st.backgroundImage !== "none" ? st.backgroundImage.slice(0, 200) : "",
+        fontFamily: st.fontFamily,
+        fontWeight: st.fontWeight,
+        fontSize: st.fontSize,
+        lineHeight: st.lineHeight,
+        letterSpacing: st.letterSpacing,
+        paddingTop: st.paddingTop, paddingRight: st.paddingRight,
+        paddingBottom: st.paddingBottom, paddingLeft: st.paddingLeft,
+        marginTop: st.marginTop, marginBottom: st.marginBottom,
+        gap: st.gap || st.columnGap || "",
+        borderRadius: st.borderRadius,
+        boxShadow: st.boxShadow && st.boxShadow !== "none" ? st.boxShadow.slice(0, 240) : "",
+        transitionDuration: st.transitionDuration,
+        transitionTimingFunction: st.transitionTimingFunction,
+        animationDuration: st.animationDuration,
+        animationName: st.animationName,
+        animationTimingFunction: st.animationTimingFunction,
+      });
+    }
+    return out;
+  }, cap);
+}
+
 function changedEnough(before, after) {
   if (before.url !== after.url) return true;
   if (before.bodyClass !== after.bodyClass) return true;
@@ -421,6 +474,7 @@ async function inspectPage(browser, url, outputDir, options) {
   await gotoStable(page, url);
   await page.screenshot({ path: path.join(outputDir, screenshots.pc), fullPage: true });
   const initial = await collectPageSignals(page);
+  const styleSamples = await collectComputedStyles(page, MAX_STYLE_SAMPLES).catch(() => []);
   const clickStates = options.clicks
     ? await exploreClicks(context, url, initial, stateDir, options.maxClicks)
     : [];
@@ -449,6 +503,7 @@ async function inspectPage(browser, url, outputDir, options) {
     network: summarizeRequests(requests),
     consoleErrors,
     clickStates,
+    styleSamples,
   };
 }
 
@@ -483,11 +538,18 @@ async function main() {
         }));
       } catch (error) {
         console.warn(`  failed: ${error.message}`);
-        results.push({ url: pageUrl, error: error.message, initial: { title: "", clickables: [], dialogs: [], forms: [] }, screenshots: {}, network: { byType: {}, thirdParty: [] }, consoleErrors: [], clickStates: [] });
+        results.push({ url: pageUrl, error: error.message, initial: { title: "", clickables: [], dialogs: [], forms: [] }, screenshots: {}, network: { byType: {}, thirdParty: [] }, consoleErrors: [], clickStates: [], styleSamples: [] });
       }
     }
   } finally {
     await browser.close().catch(() => {});
+  }
+
+  // 토큰화: 페이지별 computedStyle 샘플을 합쳐 구조화 토큰 산출물 생성
+  const allSamples = [];
+  for (const r of results) {
+    if (Array.isArray(r.styleSamples)) allSamples.push(...r.styleSamples);
+    delete r.styleSamples; // runtime-analysis.json 비대화 방지
   }
 
   const data = {
@@ -507,6 +569,27 @@ async function main() {
 
   console.log("Saved runtime/runtime-analysis.json");
   console.log("Saved 09-runtime-interactions.md");
+
+  if (allSamples.length) {
+    try {
+      const { tokens, files } = buildArtifacts(allSamples, args.url);
+      const tokensDir = path.join(outputDir, "tokens");
+      ensureDir(tokensDir);
+      for (const [name, content] of Object.entries(files)) {
+        // 한국어 리포트는 output 루트로, 기계가독 토큰은 tokens/ 하위로
+        const dest = name.endsWith(".md")
+          ? path.join(outputDir, name)
+          : path.join(tokensDir, name);
+        fs.writeFileSync(dest, content, "utf8");
+      }
+      console.log(`Tokenized ${allSamples.length} style samples → score ${tokens.score.grade} (${tokens.score.overall}/100)`);
+      console.log("Saved tokens/{raw,dtcg}.json, tokens/tokens.tailwind.js, tokens/tokens.css, 10-design-tokens-structured.md");
+    } catch (error) {
+      console.warn(`tokenize 실패(스킵): ${error.message}`);
+    }
+  } else {
+    console.warn("computedStyle 샘플 없음 — 토큰화 스킵");
+  }
 }
 
 main().catch((error) => {

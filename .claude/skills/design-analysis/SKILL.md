@@ -1,6 +1,6 @@
 ---
 name: design-analysis
-description: 웹사이트 리뉴얼 분석에서 디자인 시스템·UI 컴포넌트를 해석하는 스킬. 수집된 03-design-tokens.md와 screenshots/를 읽고 컬러 팔레트·타이포 스케일·컴포넌트 카탈로그(05-components.md)를 생성한다. design-analyst 에이전트가 사용. "디자인 분석", "디자인 시스템", "컬러/폰트 분석", "컴포넌트 분석", "UI 패턴", "디자인 분석만 다시"를 요청하면 이 스킬을 사용하라.
+description: 웹사이트 리뉴얼 분석에서 디자인 시스템·UI 컴포넌트를 해석하는 스킬. 수집된 10-design-tokens-structured.md(computedStyle 기반 군집·스케일·스코어, 있으면 1차 근거)·03-design-tokens.md·screenshots/를 읽고 컬러 팔레트·타이포 스케일·컴포넌트 카탈로그(05-components.md)를 생성한다. design-analyst 에이전트가 사용. "디자인 분석", "디자인 시스템", "컬러/폰트 분석", "컴포넌트 분석", "UI 패턴", "디자인 분석만 다시"를 요청하면 이 스킬을 사용하라.
 ---
 
 # 디자인 시스템 & 컴포넌트 분석
@@ -13,25 +13,28 @@ description: 웹사이트 리뉴얼 분석에서 디자인 시스템·UI 컴포�
 
 ## 입력 읽기 순서
 
-1. `03-design-tokens.md` — CSS 변수 컬러(용도 추정 포함), inline HEX, 감지 폰트
-2. `screenshots/pc/`, `screenshots/mobile/` — **`Read`로 이미지를 직접 열어 본다.** 레이아웃 그리드, 히어로 구성, 카드/버튼 스타일, 반응형 변화를 관찰.
-3. `06-interaction.md` — 슬라이더/탭/모달 등 동적 컴포넌트 존재 근거
-4. `pages.json` — 페이지별 구조 참고
+1. **`10-design-tokens-structured.md` (있으면 1차 근거)** — Playwright가 실제 렌더된 요소의 `getComputedStyle`을 전수 수집해 결정론적으로 토큰화한 결과. **이미 군집화된 primary/accent/neutral 팔레트, 타입·간격·radius·shadow 스케일, 모션 토큰, WCAG 대비, 디자인 스코어(A–F)**가 들어 있다. 정적 regex보다 정확하므로 컬러/타이포/간격 분석의 출발점으로 삼는다. 기계가독 원본은 `tokens/tokens.dtcg.json`·`tokens/tokens.tailwind.js`·`tokens/tokens.css`.
+2. `03-design-tokens.md` — 정적 수집(CSS 변수 컬러, inline HEX, 감지 폰트). `10-`이 없을 때의 대체 근거이자, CSS 변수 *명명*(`--primary` 등 의미) 보강용.
+3. `screenshots/pc/`, `screenshots/mobile/` — **`Read`로 이미지를 직접 열어 본다.** 레이아웃 그리드, 히어로 구성, 카드/버튼 스타일, 반응형 변화를 관찰.
+4. `06-interaction.md` / `09-runtime-interactions.md` — 슬라이더/탭/모달 등 동적 컴포넌트 존재 근거
+5. `pages.json` — 페이지별 구조 참고
+
+> ⚠️ `10-`(computedStyle)과 `03-`(정적 regex)이 어긋나면 **`10-`을 신뢰**한다 — 선언된 변수가 아니라 실제 렌더에 쓰인 값이 진실이다([[collection-misses-loaded-vs-used-libs]]와 같은 결).
 
 스크린샷이 없으면 토큰 기반 분석만 하고 "⚠️ 스크린샷 없음 — 레이아웃은 토큰 기반 추정"을 명시한다.
 
 ## 분석 단계
 
 ### 1. 컬러 팔레트 군집화
-나열된 HEX를 역할로 묶는다:
+**`10-`이 있으면 거기 군집된 primary/accent/neutral을 그대로 채택**하고, CSS 변수명(`03-`)으로 의미 근거만 보강한다. `10-`이 없으면 나열된 HEX를 직접 역할로 묶는다:
 
 | 역할 | 컬러 | 근거 |
 |------|------|------|
-| Primary | `#1A3B8C` | CSS 변수 `--primary` |
-| Neutral 스케일 | `#FFF`→`#222` 4단계 | inline HEX 빈도 |
-| Accent | `#FF6B00` | `--point` |
+| Primary | `#1A3B8C` | `10-` interactive 배경 군집 / `--primary` |
+| Neutral 스케일 | `#FFF`→`#222` 4단계 | `10-` neutral 군집 |
+| Accent | `#FF6B00` | `10-` accent / `--point` |
 
-명도/채도로 스케일을 추정하고, 팔레트 성격을 한 줄로(예: "저채도·고대비·모노톤 중심"). **03-design-tokens에 실재하는 값만** 쓴다(QA 정합성 통과).
+명도/채도로 스케일을 추정하고, 팔레트 성격을 한 줄로(예: "저채도·고대비·모노톤 중심"). **`10-` 또는 `03-`에 실재하는 값만** 쓴다(QA 정합성 통과). `10-`의 디자인 스코어(A–F)·WCAG 대비 결과가 있으면 톤 요약·접근성 코멘트에 인용한다.
 
 ### 2. 타이포그래피 시스템
 감지된 폰트를 역할(제목/본문/강조)로 배치하고, 스크린샷에서 크기 위계를 관찰해 스케일을 추정한다. 웹폰트인지 시스템폰트인지, 한글/영문 폰트 구분.
@@ -71,7 +74,8 @@ description: 웹사이트 리뉴얼 분석에서 디자인 시스템·UI 컴포�
 ## 자가 점검 (출력 전)
 
 - [ ] 스크린샷이 있었다면 실제로 `Read`로 열어 봤는가?
-- [ ] 팔레트의 모든 컬러가 03-design-tokens에서 확인되는가?
+- [ ] `10-design-tokens-structured.md`가 있으면 그 군집·스케일·스코어를 1차 근거로 썼는가?
+- [ ] 팔레트의 모든 컬러가 `10-` 또는 03-design-tokens에서 확인되는가?
 - [ ] 컴포넌트마다 복제 난이도를 매겼는가?
 - [ ] 디자인 톤 한 줄 요약을 작성했는가?
 - [ ] 두 출력 파일 모두 생성했는가?

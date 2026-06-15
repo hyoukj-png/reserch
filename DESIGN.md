@@ -28,9 +28,15 @@
         ├── 07-performance-a11y.md
         ├── 08-renewal-insights.md
         ├── 09-runtime-interactions.md
+        ├── 10-design-tokens-structured.md   ← computedStyle 기반 토큰(스코어·대비 포함)
         ├── BENCHMARK_RECIPE.md
         ├── MASTER_REPLICATION_PROMPT.md
         ├── COMPLETION_REPORT.md
+        ├── tokens/                          ← 기계가독 토큰(개발 인수인계용)
+        │   ├── tokens.raw.json
+        │   ├── tokens.dtcg.json             ← W3C DTCG
+        │   ├── tokens.tailwind.js           ← Tailwind preset
+        │   └── tokens.css                   ← CSS 변수
         ├── runtime/
         │   └── runtime-analysis.json
         ├── screenshots/

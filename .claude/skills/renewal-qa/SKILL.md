@@ -14,8 +14,8 @@ description: 웹사이트 리뉴얼 분석 산출물의 완전성·정합성·�
 ## 검증 항목 (경계면 교차 비교)
 
 ### 1. 완전성
-기대 산출물 6종이 모두 존재하고 비어있지 않은가:
-`05-components.md`, `07-performance-a11y.md`, `08-renewal-insights.md`, `BENCHMARK_RECIPE.md`, `MASTER_REPLICATION_PROMPT.md`, `COMPLETION_REPORT.md`. 누락 시 책임 에이전트 명시.
+기대 산출물 7종이 모두 존재하고 비어있지 않은가:
+`05-components.md`, `07-performance-a11y.md`, `08-renewal-insights.md`, `BENCHMARK_RECIPE.md`, `MASTER_REPLICATION_PROMPT.md`, `PRD.md`, `COMPLETION_REPORT.md`. 누락 시 책임 에이전트 명시.
 
 ### 2. 기술→페이지 매핑 정합성 (환각 검증, 최우선)
 `BENCHMARK_RECIPE.md`와 `_workspace/tech_findings.md`가 인용한 페이지 경로가 `pages.json`에 실재하는가. **스크립트로 대조:**
@@ -44,7 +44,9 @@ print("환각 의심 경로:", ghost or "없음")
 `ghost`가 비어있지 않으면 blocker. 해당 경로를 인용한 레시피를 benchmark-synthesizer + tech-analyst에게 수정 요청.
 
 ### 3. 디자인 토큰 정합성
-`05-components.md`/`design_findings.md`의 팔레트 HEX·폰트가 `03-design-tokens.md`에 실재하는가. HEX를 정규식으로 뽑아 토큰 파일과 대조. 없는 값은 환각 의심.
+`05-components.md`/`design_findings.md`의 팔레트 HEX·폰트가 토큰 근거에 실재하는가. HEX를 정규식으로 뽑아 대조하되, **근거 파일은 `10-design-tokens-structured.md`(+`tokens/tokens.raw.json`)와 `03-design-tokens.md` 둘 다**이다 — computedStyle 기반 `10-`이 있으면 그 값이 1차 진실이므로, `10-`/`tokens.raw.json` *또는* `03-` 어디에든 있으면 통과. 둘 다에 없는 값만 환각 의심(blocker 후보).
+
+> ⚠️ `10-`은 군집 대표색이라 `03-`의 raw HEX와 미세하게 다를 수 있다(예: `#533afd` vs `#5339fd`). 근접색(distance 작음)은 환각으로 보지 말 것 — 군집화 결과다.
 
 ### 4. 콘텐츠/IA 정합성
 IA·CTA 분석이 `01-site-structure`/`04-content-inventory`/`pages.json`과 일치하는가. IA가 언급한 섹션/페이지 수가 실제와 맞는지 확인.
@@ -69,6 +71,16 @@ grep -qE "데모|가상|실제 의료기관 정보가 아닙니다" output/{site
 
 ```bash
 grep -rnE "\{site\}|\{사이트명\}|TODO|XXX|\bplaceholder\b" output/{site}/*.md
+```
+
+### 8. PRD 정합성 (페이지·개선 근거 검증)
+`PRD.md`의 **페이지 맵 경로가 pages.json에 실재**하는가 — 항목 2와 동일한 스크립트로 PRD 본문의 `` `/...` `` 경로를 대조. "신규"로 명시되지 않은 환각 경로는 blocker. 또한 PRD의 "개선 반영" 항목이 `08-renewal-insights.md`의 개선/도입 항목에 실재하는지(없는 개선을 발명하지 않았는지), 각 P0 페이지에 목적·섹션·한글 콘텐츠·CTA가 채워졌는지(플레이스홀더 잔존 시 warning) 확인.
+
+```bash
+# PRD가 인용한 경로 중 pages.json에 없는 것 (신규 표기 제외 후 수동 확인)
+grep -oE "`/[^`]*`" output/{site}/PRD.md | sort -u
+# P0 페이지 섹션에 플레이스홀더가 남았는지
+grep -nE "여기에|TODO|\{.*\}|플레이스홀더" output/{site}/PRD.md || echo "플레이스홀더 없음"
 ```
 
 ## 작업 방식 (점진적 QA)

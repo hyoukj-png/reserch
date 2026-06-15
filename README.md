@@ -42,14 +42,22 @@ npx playwright install chromium
 ### 5. 분석 흐름
 ```bash
 # (1) 수집 — 정적 데이터 + 모달/숨김 콘텐츠 자동 복구 → output/{site}/ 생성
+#   • 전체 사이트(크롤링): 사이트의 모든 페이지를 탐색
 python scripts/analyze_site.py https://example.com/
+#   • 단일 페이지만: 제공한 URL 하나만 분석 (작업량·토큰 절약)
+python scripts/analyze_site.py https://example.com/products/foo --single-page
 # (2) 런타임 보강 — 실제 JS 실행, 스크린샷, 클릭 후 모달/탭/메뉴 상태 수집
+#   pages.json 페이지 수만큼 자동 스코핑되므로 단일 페이지 수집 시 1페이지만 보강됨
 npm run runtime -- https://example.com/ --max-pages 8 --max-clicks 14
 # (3) 분석 — Claude Code에서 하네스 실행 → 05/07/08-renewal-insights, BENCHMARK_RECIPE, COMPLETION_REPORT 생성
 ```
 
+> **범위 선택:** 기본은 전체 사이트 크롤링이다. `--single-page`를 붙이면 sitemap/링크 크롤링을 건너뛰고 **제공한 URL 한 페이지만** 수집한다 → `pages.json`이 1페이지가 되어 런타임 보강·AI 분석이 모두 1페이지로 연쇄 축소(토큰·시간 절약). 특정 랜딩/제품 페이지만 벤치마킹할 때 사용.
+
 런타임 보강 산출물:
 - `output/{site}/09-runtime-interactions.md`
+- `output/{site}/10-design-tokens-structured.md` — computedStyle 기반 토큰(군집 팔레트·스케일·모션·WCAG·디자인 스코어 A–F)
+- `output/{site}/tokens/` — 기계가독 토큰: `tokens.dtcg.json`(W3C DTCG)·`tokens.tailwind.js`(preset)·`tokens.css`(변수)·`tokens.raw.json`
 - `output/{site}/runtime/runtime-analysis.json`
 - `output/{site}/screenshots/pc/*.png`
 - `output/{site}/screenshots/mobile/*.png`
