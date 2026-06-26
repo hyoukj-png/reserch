@@ -29,8 +29,17 @@ docs/.pdca-status.json
 
 # macOS
 .DS_Store
+._*
 
 # IDE
 .vscode/
 .idea/
+
 node_modules
+.claude/
+CLAUDE.md
+
+# Agent Workspaces
+_workspace*/
+.__workspace*
+
