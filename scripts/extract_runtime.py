@@ -1,4 +1,11 @@
 """
+[DEPRECATED — 2026-06-29]
+이 스크립트의 기능(폰트·타입스케일·팔레트·라이브러리 스코프·GSAP/Swiper 설정·리빌 CSS·
+가로 확장 패널 인터랙션 패턴)은 정식 런타임 도구 `scripts/browser_analyze_site.js`의
+collectPageSignals().designSignals / interactionPatterns 로 흡수되었다(단일 도구 일원화).
+신규 분석은 browser_analyze_site.js(→ 09-runtime-interactions.md)를 사용할 것.
+이 파일은 참고/폴백용으로 보존한다(삭제 보류).
+
 런타임 인터랙션·디자인 실측 추출 (Playwright)
 Usage: python3 extract_runtime.py <site_dir> [max_pages]
 
@@ -207,6 +214,58 @@ EXTRACT_JS = r"""
     extLinks: document.querySelectorAll('a[target="_blank"]').length,
   }), null);
 
+  // ---- 11. 인터랙션 패턴(가로 패널 행: 확장 셀렉터·이미지 패널 아코디언) ----
+  // 핵심 시그니처: "같은 행에 나란히 선 풀높이 패널 4~6개" = 카드 그리드로 오판하기 쉬운
+  // 가로 확장/슬라이드 패널 셀렉터. transition:all(CSS 리셋)에 의존하지 않고 기하학적으로 탐지.
+  out.interactionPatterns = safe(() => {
+    const found = [];
+    const seen = new Set();
+    const heading = (el) => {
+      let p = el;
+      for (let i = 0; i < 4 && p; i++) {
+        const h = p.querySelector && p.querySelector('h1,h2,h3,[class*="tit"]');
+        if (h && (h.textContent || '').trim()) return h.textContent.trim().replace(/\s+/g, ' ').slice(0, 30);
+        p = p.parentElement;
+      }
+      return '';
+    };
+    document.querySelectorAll('ul, ol, div, section').forEach((el) => {
+      if (found.length > 10) return;
+      const kids = [...el.children].filter((k) => k.getBoundingClientRect().width > 40);
+      if (kids.length < 4 || kids.length > 6) return;
+      const rects = kids.map((k) => k.getBoundingClientRect());
+      // (1) 같은 행: 자식들의 top이 서로 근접(±40px)
+      const tops = rects.map((r) => r.top);
+      const sameRow = Math.max(...tops) - Math.min(...tops) < 40;
+      // (2) 풀높이 패널: 다수 자식이 높이 280px 이상
+      const tallCount = rects.filter((r) => r.height > 280).length;
+      // (3) 패널 폭이 비슷(균등 분할 셀렉터): 폭 표준편차가 작음
+      const ws = rects.map((r) => r.width);
+      const avgW = ws.reduce((a, b) => a + b, 0) / ws.length;
+      const evenWidth = ws.every((w) => Math.abs(w - avgW) < avgW * 0.4) && avgW < 700;
+      if (!(sameRow && tallCount >= 4 && evenWidth)) return;
+      const key = el.className.toString() + kids.length;
+      if (seen.has(key)) return;
+      seen.add(key);
+      // 인터랙션 힌트: 자식의 transition에 width/flex/transform 또는 cursor pointer가 있으면 확장형
+      const cs0 = getComputedStyle(kids[0]);
+      const trans = cs0.transition || '';
+      const expandHint = /\b(width|flex|transform)\b/.test(trans) || cs0.cursor === 'pointer' || cs0.flexGrow !== '0';
+      found.push({
+        type: expandHint ? '가로 확장/셀렉터 패널(hover·click 펼침 추정)' : '가로 풀높이 패널 행(슬라이더/셀렉터 후보)',
+        container: el.className.toString().slice(0, 36) || el.tagName,
+        panelCount: kids.length,
+        panelWidth: Math.round(avgW),
+        panelHeight: Math.round(Math.max(...rects.map((r) => r.height))),
+        childTransition: trans.slice(0, 50),
+        cursor: cs0.cursor, flexGrow: cs0.flexGrow,
+        heading: heading(el),
+        panelTitles: kids.map((k) => (k.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 16)).filter(Boolean).slice(0, 6),
+      });
+    });
+    return found;
+  }, []);
+
   return out;
 }
 """
@@ -388,6 +447,29 @@ def summarize_md(site_dir: str, result: dict) -> str:
             for rule in rr[:8]:
                 lines.append(f"- `{rule.get('selector')}` → `{rule.get('css')}`")
             lines.append("")
+
+    # 인터랙션 패턴(가로 풀높이 패널 행) — 카드 그리드로 오판하기 쉬운 패턴
+    lines.append("## 5b. 인터랙션 패턴 (가로 풀높이 패널 행 — 확장 셀렉터/슬라이더 후보)")
+    lines.append("> ⚠️ 같은 행에 나란히 선 풀높이 패널들. **정적 카드 그리드로 오판 금지** — 확장(hover/click 펼침)·슬라이드 여부를 확인하고 형태·모션을 그대로 명세할 것.")
+    any_ip = False
+    for r in results:
+        ip = r.get("interactionPatterns") or []
+        if ip:
+            any_ip = True
+            lines.append(f"### {r.get('url','?')}")
+            for p in ip:
+                lines.append(
+                    f"- **{p.get('type')}** `{p.get('container')}` · 패널 {p.get('panelCount')}개 "
+                    f"({p.get('panelWidth')}×{p.get('panelHeight')}px) · child transition `{p.get('childTransition')}` · cursor {p.get('cursor')} · flex-grow {p.get('flexGrow')}"
+                )
+                if p.get("heading"):
+                    lines.append(f"  - 섹션: {p.get('heading')}")
+                if p.get("panelTitles"):
+                    lines.append(f"  - 패널: {' / '.join(p.get('panelTitles'))}")
+            lines.append("")
+    if not any_ip:
+        lines.append("(감지된 가로 패널 행 없음)")
+    lines.append("")
 
     # 통합 팔레트
     lines.append("## 6. 통합 팔레트 (전 페이지 빈도)")

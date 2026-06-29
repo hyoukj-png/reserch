@@ -223,6 +223,146 @@ async function collectPageSignals(page) {
       })),
     }));
 
+    // 디자인 런타임 실측 — computed 폰트/타입스케일/팔레트/라이브러리 스코프/모션 설정.
+    // 정적 크롤러가 못 보는 "실제 렌더된" 값. 분석가의 폰트·라이브러리 판정 1차 정답 소스.
+    const designSignals = (() => {
+      const safe = (fn, fallback) => { try { return fn(); } catch (e) { return fallback; } };
+      const out = {};
+      // 폰트(실측)
+      out.fonts = safe(() => {
+        const usage = {};
+        document.querySelectorAll("p,span,h1,h2,h3,h4,h5,li,a,div,td,th,button").forEach((el) => {
+          if ((el.textContent || "").trim().length > 2) {
+            const f = getComputedStyle(el).fontFamily.split(",")[0].replace(/["']/g, "").trim();
+            usage[f] = (usage[f] || 0) + 1;
+          }
+        });
+        return {
+          bodyComputed: getComputedStyle(document.body).fontFamily,
+          usageTop: Object.entries(usage).sort((a, b) => b[1] - a[1]).slice(0, 8),
+          faceFamilies: [...document.fonts].map((f) => f.family).filter((v, i, a) => a.indexOf(v) === i).slice(0, 30),
+        };
+      }, null);
+      // 타입 스케일(실측)
+      out.typeScale = safe(() => {
+        const sizes = {};
+        document.querySelectorAll("h1,h2,h3,h4,h5,h6,p,span,a,li,div,button").forEach((el) => {
+          if ((el.textContent || "").trim().length > 2) {
+            const fs = parseInt(getComputedStyle(el).fontSize, 10);
+            if (fs) sizes[fs] = (sizes[fs] || 0) + 1;
+          }
+        });
+        const headings = {};
+        ["h1", "h2", "h3", "h4"].forEach((t) => {
+          const el = document.querySelector(t);
+          if (el) { const s = getComputedStyle(el); headings[t] = { fontSize: s.fontSize, lineHeight: s.lineHeight, fontWeight: s.fontWeight, letterSpacing: s.letterSpacing, fontFamily: s.fontFamily.split(",")[0].replace(/["']/g, "") }; }
+        });
+        const fz = {};
+        document.querySelectorAll('[class*="fz"]').forEach((el) => {
+          ((el.className || "").toString().match(/fz\d+/g) || []).forEach((c) => { if (!fz[c]) fz[c] = getComputedStyle(el).fontSize; });
+        });
+        return { sizeFrequency: Object.entries(sizes).sort((a, b) => b[1] - a[1]).slice(0, 14), headings, fzUtilities: fz };
+      }, null);
+      // 팔레트(실측)
+      out.palette = safe(() => {
+        const text = {}, bg = {};
+        document.querySelectorAll("h1,h2,h3,h4,strong,b,em,button,a,p,span").forEach((el) => { const c = getComputedStyle(el).color; if (c) text[c] = (text[c] || 0) + 1; });
+        document.querySelectorAll("section,div,header,footer,main,article").forEach((el) => { const b = getComputedStyle(el).backgroundColor; if (b && b !== "rgba(0, 0, 0, 0)" && b !== "transparent") bg[b] = (bg[b] || 0) + 1; });
+        return { bodyBg: getComputedStyle(document.body).backgroundColor, textColors: Object.entries(text).sort((a, b) => b[1] - a[1]).slice(0, 8), bgColors: Object.entries(bg).sort((a, b) => b[1] - a[1]).slice(0, 8) };
+      }, null);
+      // 애니메이션 라이브러리 로드 스코프(페이지별)
+      out.libs = safe(() => ({
+        gsap: window.gsap ? (window.gsap.version || true) : false,
+        ScrollTrigger: !!window.ScrollTrigger, AOS: !!window.AOS, Swiper: !!window.Swiper,
+        Rellax: !!window.Rellax, anime: !!window.anime, scrollMonitor: !!window.scrollMonitor, Vimeo: !!window.Vimeo,
+      }), null);
+      // GSAP ScrollTrigger 설정
+      out.scrollTrigger = safe(() => (window.ScrollTrigger && window.ScrollTrigger.getAll)
+        ? window.ScrollTrigger.getAll().map((t) => ({ trigger: (t.trigger && t.trigger.className ? t.trigger.className.toString() : String(t.trigger)).slice(0, 40), start: t.vars && t.vars.start, end: t.vars && t.vars.end, scrub: t.vars && t.vars.scrub, pin: t.vars && t.vars.pin }))
+        : [], []);
+      // AOS 속성 집계
+      out.aos = safe(() => {
+        const els = [...document.querySelectorAll("[data-aos]")]; const types = {}, dur = {};
+        els.forEach((e) => { const t = e.getAttribute("data-aos"); if (t) types[t] = (types[t] || 0) + 1; const d = e.getAttribute("data-aos-duration"); if (d) dur[d] = (dur[d] || 0) + 1; });
+        return { total: els.length, types, durations: dur, globalDuration: window.aosDuration || null };
+      }, null);
+      // Swiper 인스턴스 설정
+      out.swipers = safe(() => [...document.querySelectorAll(".swiper, .swiper-container")].map((el) => {
+        const s = el.swiper; if (!s) return { cls: (el.className || "").toString().slice(0, 30), instantiated: false };
+        const ap = s.params.autoplay;
+        return { cls: (el.className || "").toString().slice(0, 30), slidesPerView: s.params.slidesPerView, spaceBetween: s.params.spaceBetween, autoplay: ap ? (ap.delay || true) : false, loop: s.params.loop, effect: s.params.effect, speed: s.params.speed };
+      }), []);
+      // 커스텀 스크롤 리빌 클래스(opacity:0 + transform/transition)
+      out.revealRules = safe(() => {
+        const found = [];
+        for (const ss of document.styleSheets) {
+          let rules; try { rules = ss.cssRules; } catch (e) { continue; }
+          if (!rules) continue;
+          for (const r of rules) {
+            if (!r.style) continue;
+            const css = r.style.cssText || "";
+            if (/opacity:\s*0\b/.test(css) && (/transform:\s*translate|transform:\s*scale/.test(css) || /transition:/.test(css))) {
+              found.push({ selector: (r.selectorText || "").slice(0, 60), css: css.slice(0, 200) });
+            }
+          }
+          if (found.length > 20) break;
+        }
+        return found.slice(0, 20);
+      }, []);
+      return out;
+    })();
+
+    // 가로 풀높이 패널 행(확장 셀렉터/이미지 패널 아코디언) 탐지 —
+    // 정적/클릭 분석이 "카드 그리드"로 오판하기 쉬운 패턴. 기하학적 시그니처로 검출.
+    const interactionPatterns = (() => {
+      const found = [];
+      const seen = new Set();
+      const headingOf = (el) => {
+        let node = el;
+        for (let i = 0; i < 4 && node; i++) {
+          const h = node.querySelector && node.querySelector('h1,h2,h3,[class*="tit"]');
+          if (h && (h.textContent || "").trim()) return (h.textContent || "").trim().replace(/\s+/g, " ").slice(0, 30);
+          node = node.parentElement;
+        }
+        return "";
+      };
+      document.querySelectorAll("ul,ol,div,section").forEach((el) => {
+        if (found.length > 10) return;
+        const kids = [...el.children].filter((child) => child.getBoundingClientRect().width > 40);
+        if (kids.length < 4 || kids.length > 6) return;
+        const rects = kids.map((child) => child.getBoundingClientRect());
+        const tops = rects.map((rect) => rect.top);
+        const sameRow = Math.max(...tops) - Math.min(...tops) < 40;
+        const tallCount = rects.filter((rect) => rect.height > 280).length;
+        const widths = rects.map((rect) => rect.width);
+        const avgW = widths.reduce((sum, value) => sum + value, 0) / widths.length;
+        const evenWidth = widths.every((value) => Math.abs(value - avgW) < avgW * 0.4) && avgW < 700;
+        if (!(sameRow && tallCount >= 4 && evenWidth)) return;
+        const key = (el.className || "").toString() + kids.length;
+        if (seen.has(key)) return;
+        seen.add(key);
+        const cs0 = getComputedStyle(kids[0]);
+        const trans = cs0.transition || "";
+        const expandHint = /\b(width|flex|transform)\b/.test(trans) || cs0.cursor === "pointer" || cs0.flexGrow !== "0";
+        found.push({
+          type: expandHint ? "가로 확장/셀렉터 패널(hover·click 펼침 추정)" : "가로 풀높이 패널 행(슬라이더/셀렉터 후보)",
+          container: (el.className || "").toString().slice(0, 36) || el.tagName,
+          panelCount: kids.length,
+          panelWidth: Math.round(avgW),
+          panelHeight: Math.round(Math.max(...rects.map((rect) => rect.height))),
+          childTransition: trans.slice(0, 50),
+          cursor: cs0.cursor,
+          flexGrow: cs0.flexGrow,
+          heading: headingOf(el),
+          panelTitles: kids
+            .map((child) => (child.textContent || "").replace(/\s+/g, " ").trim().slice(0, 16))
+            .filter(Boolean)
+            .slice(0, 6),
+        });
+      });
+      return found;
+    })();
+
     return {
       title: document.title,
       url: location.href,
@@ -232,6 +372,8 @@ async function collectPageSignals(page) {
       clickables,
       dialogs,
       forms,
+      designSignals,
+      interactionPatterns,
       storage: {
         localStorage: Object.keys(localStorage || {}).slice(0, 30),
         sessionStorage: Object.keys(sessionStorage || {}).slice(0, 30),
@@ -353,6 +495,45 @@ function markdownReport({ baseUrl, pages, generatedAt }) {
       lines.push("### Forms");
       for (const form of page.initial.forms.slice(0, 8)) {
         lines.push(`- \`${form.method}\` ${form.action || "(no action)"} — ${form.fields.length}개 필드`);
+      }
+    }
+    const ds = page.initial.designSignals;
+    if (ds) {
+      lines.push("");
+      lines.push("### 디자인 런타임 실측 (★ 폰트·라이브러리·모션 1차 정답)");
+      if (ds.fonts) {
+        const top = (ds.fonts.usageTop || []).slice(0, 3).map(([f, n]) => `${f}(${n})`).join(", ");
+        lines.push(`- **폰트(실측):** 본문 \`${(ds.fonts.bodyComputed || "").split(",")[0]}\` · 상위 ${top}`);
+      }
+      if (ds.typeScale && ds.typeScale.fzUtilities && Object.keys(ds.typeScale.fzUtilities).length) {
+        lines.push(`- **타입스케일(fz유틸):** ${Object.entries(ds.typeScale.fzUtilities).map(([k, v]) => v).join(" / ")}`);
+      }
+      if (ds.palette) lines.push(`- **배경:** ${ds.palette.bodyBg} · 텍스트색 ${(ds.palette.textColors || []).slice(0, 3).map(([c]) => c).join(", ")}`);
+      if (ds.libs) {
+        const on = Object.entries(ds.libs).filter(([, v]) => v).map(([k]) => k);
+        lines.push(`- **라이브러리 로드:** ${on.length ? on.join(", ") : "(없음 — 경량/정적)"}`);
+      }
+      if (ds.scrollTrigger && ds.scrollTrigger.length) {
+        ds.scrollTrigger.forEach((t) => lines.push(`- **GSAP ScrollTrigger:** \`${t.trigger}\` start=${t.start} end=${t.end} scrub=${t.scrub}`));
+      }
+      if (ds.swipers && ds.swipers.length) {
+        ds.swipers.filter((s) => s.instantiated !== false).forEach((s) => lines.push(`- **Swiper:** \`${s.cls}\` spv=${s.slidesPerView} gap=${s.spaceBetween} autoplay=${s.autoplay} loop=${s.loop} effect=${s.effect} speed=${s.speed}`));
+      }
+      if (ds.aos && ds.aos.total) lines.push(`- **AOS:** total=${ds.aos.total} types=${JSON.stringify(ds.aos.types)} dur=${JSON.stringify(ds.aos.durations)} global=${ds.aos.globalDuration}`);
+      if (ds.revealRules && ds.revealRules.length) {
+        lines.push("- **리빌 클래스(CSS):**");
+        ds.revealRules.slice(0, 4).forEach((r) => lines.push(`  - \`${r.selector}\` → \`${r.css}\``));
+      }
+    }
+    const patterns = page.initial.interactionPatterns || [];
+    if (patterns.length) {
+      lines.push("");
+      lines.push("### 인터랙션 패턴 (가로 풀높이 패널 행 — 확장 셀렉터/슬라이더 후보)");
+      lines.push("> ⚠️ 같은 행에 나란히 선 풀높이 패널. **정적 카드 그리드로 오판 금지** — 확장(hover/click 펼침)·슬라이드 여부를 확인하고 형태·모션을 그대로 명세할 것.");
+      for (const pattern of patterns) {
+        lines.push(`- **${pattern.type}** \`${pattern.container}\` · 패널 ${pattern.panelCount}개 (${pattern.panelWidth}×${pattern.panelHeight}px) · transition \`${pattern.childTransition}\` · cursor ${pattern.cursor} · flex-grow ${pattern.flexGrow}`);
+        if (pattern.heading) lines.push(`  - 섹션: ${pattern.heading}`);
+        if (pattern.panelTitles && pattern.panelTitles.length) lines.push(`  - 패널: ${pattern.panelTitles.join(" / ")}`);
       }
     }
     const changedStates = page.clickStates.filter((item) => item.changed);

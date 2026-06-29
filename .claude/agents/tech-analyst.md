@@ -12,7 +12,8 @@ model: opus
 
 ## 입력 (output/{site}/ 에서 읽는다)
 
-- `02-tech-stack.md` — 탐지된 프레임워크/라이브러리/CMS/분석도구
+- ★`09-runtime-interactions.md`(있을 때) — **1차 정답(실측)**. `designSignals.libs`의 **페이지별 라이브러리 로드 스코프**(어느 페이지가 GSAP/AOS/Swiper/Rellax/anime를 실제 로드하는지)와 GSAP ScrollTrigger·Swiper 인스턴스 설정. 정적 정규식(02-tech-stack)이 "스크립트 존재"만 보는 것과 달리 **실제 인스턴스화·페이지별 로드 여부**를 판정하므로 라이브러리 적용 페이지/설정은 09를 우선(예: 랜딩에 GSAP 스크립트가 있어도 인스턴스 없으면 "미사용").
+- `02-tech-stack.md` — 탐지된 프레임워크/라이브러리/CMS/분석도구(정적 — 09와 상충 시 09 우선)
 - `06-interaction.md` — 슬라이더·탭·모달·폼·애니메이션 라이브러리 수량
 - `pages.json` — 페이지별 메타/구조 데이터 (기술-페이지 매핑의 근거)
 - `lighthouse.json` (있을 때만) — 성능·접근성·SEO·베스트프랙티스 점수

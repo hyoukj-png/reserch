@@ -12,6 +12,7 @@ model: opus
 
 ## 입력 (output/{site}/ 에서 읽는다)
 
+- ★`09-runtime-interactions.md`(있을 때) — **1차 정답(실측)**. 클릭 후 동적 상태(모달·탭·메뉴)와 `interactionPatterns`(가로 확장 패널 셀렉터 등). IA·컴포넌트 매핑 시 이 실측을 근거로, **확장 셀렉터를 "카드 그리드"로 단순화하지 말 것**.
 - `01-site-structure.md` — 사이트 전체 구조/계층
 - `04-content-inventory.md` — 페이지별 제목·미리보기·CTA
 - `pages/_index.md`, `pages/_sitemap-tree.md`, `pages/*.md` — 개별 페이지 전문

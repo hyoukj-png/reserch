@@ -12,6 +12,8 @@
 
 **구성:** 에이전트 팀 모드. 분석가 3종(tech/design/content) 병렬 → benchmark-synthesizer 통합 → qa-validator 정합성 검증. 에이전트 정의는 `.claude/agents/`, 스킬은 `.claude/skills/`에서 관리. 산출물: `05-components.md`, `07-performance-a11y.md`, `08-renewal-insights.md`, `BENCHMARK_RECIPE.md`, `MASTER_REPLICATION_PROMPT.md`, `COMPLETION_REPORT.md`. `09-runtime-interactions.md`가 있으면 클릭 후 동적 상태의 1차 근거로 반드시 포함한다.
 
+**런타임 도구 일원화:** 런타임 실측은 `scripts/browser_analyze_site.js` **단일 도구**로 통합한다(→ `09-runtime-interactions.md`). 캡처 범위: ① 클릭 기반 동적 상태(모달·clickable·폼·콘솔/네트워크) ② **디자인 실측(designSignals)** — computed 폰트·타입스케일·팔레트·페이지별 라이브러리 로드 스코프·GSAP/Swiper/AOS 설정·리빌 CSS ③ **인터랙션 패턴(interactionPatterns)** — 가로 확장 패널 셀렉터 등 카드 그리드로 오판하기 쉬운 패턴. 분석가는 폰트·라이브러리·인터랙션 판정 시 `09-runtime-interactions.md`를 추론·정적신호보다 우선한다. (구 `extract_runtime.py`는 deprecated — 기능 흡수 완료, 폴백용 보존)
+
 **변경 이력:**
 | 날짜 | 변경 내용 | 대상 | 사유 |
 |------|----------|------|------|
@@ -21,3 +23,5 @@
 | 2026-06-06 | 수집 스크립트에 모달/숨김 콘텐츠 자동 추출 추가 (`pages/_modals.md` 생성) + py3.9 f-string 버그 수정 | scripts/analyze_site.py | 근본 보완 — `display:none` 모달 본문을 정적으로 복구(Playwright 불요), 분석 스킬이 자동 소비 |
 | 2026-06-06 | Playwright 런타임 보강 스크립트 추가 (`09-runtime-interactions.md`, screenshots, runtime JSON 생성) | scripts/browser_analyze_site.js | 완전 복제 목표를 위한 동적 DOM/클릭 상태/스크린샷 근거 확보 |
 | 2026-06-06 | 6번째 산출물 `MASTER_REPLICATION_PROMPT.md` 추가 — 사이트 전체를 한 장으로 재현하는 자기완결 빌드 지시서(멀티 에이전트 역할 가이드 + 안전 치환 포함). 신규 `references/master-prompt-format.md` + benchmark-recipe/synthesizer/renewal-analysis/renewal-qa 동기화 | skills/benchmark-recipe, agents/benchmark-synthesizer, skills/renewal-analysis, skills/renewal-qa | 레시피(부품)를 넘어 near-clone 빌드 지시서를 자동 생성, 수신 AI가 역할별 전문 작업으로 분담하도록 가이드 |
+| 2026-06-29 | 런타임 도구 일원화 — `extract_runtime.py`의 designSignals(폰트·타입스케일·팔레트·라이브러리 스코프·GSAP/Swiper 설정·리빌 CSS)를 `browser_analyze_site.js`로 흡수, 구 스크립트 deprecated | scripts/browser_analyze_site.js, scripts/extract_runtime.py | 런타임 추출기 2개 중복 제거 → 09-runtime-interactions.md 단일 정답 소스화 |
+| 2026-06-29 | 가로 확장 패널 셀렉터 등 인터랙션 패턴 탐지 추가(interactionPatterns) | scripts/browser_analyze_site.js | "5대 중점진료=가로 확장 아코디언"을 카드 그리드로 오판한 사례(afneyeclinic/마블안과) 재발 방지 |
