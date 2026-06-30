@@ -36,8 +36,9 @@ docs/.pdca-status.json
 .idea/
 
 node_modules
-.claude/
-CLAUDE.md
+
+# 하네스(.claude/agents·skills·settings.json)와 CLAUDE.md는 공유 — 추적 유지.
+# 머신별 로컬 설정만 제외(위 .claude/settings.local.json 라인에서 처리).
 
 # Agent Workspaces
 _workspace*/

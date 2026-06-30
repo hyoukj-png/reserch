@@ -363,6 +363,90 @@ async function collectPageSignals(page) {
       return found;
     })();
 
+    // 자가진단 위젯(예/아니오 토글 설문·카운트업 타이머) 탐지 —
+    // <form>/<input> 이 아니라 button 토글·JS 카운터로 구현돼 form 기반 탐지가 놓치는 패턴(afneyeclinic survey=0 오탐 사례).
+    // visible 필터를 적용하지 않는다: reveal(opacity:0)·모달 내부(display:none) 위젯도 DOM에 존재하므로 구조 실측이 가능하고,
+    // 모달을 클릭으로 열기 전이라도 내부 self-test를 인벤토리하기 위함이다.
+    const selfTestWidgets = (() => {
+      try {
+        const AFFIRM = /^(예|네|yes|y|있다|있음|해당|해당된다|o)$/i;
+        const DENY = /^(아니오|아니요|no|n|없다|없음|아님|x)$/i;
+        const out = { surveys: [], timers: [] };
+
+        // 1) 토글그룹 설문: 한 컨테이너에 '예/아니오(긍정/부정) 버튼 쌍'이 2개 이상이면 설문으로 판정.
+        const pairContainers = [...document.querySelectorAll("*")].filter((el) => {
+          const btns = [...el.children].filter((c) => /^(button|a|span|div|label)$/i.test(c.tagName) && (c.textContent || "").trim().length <= 6);
+          if (btns.length !== 2) return false;
+          const t0 = (btns[0].textContent || "").trim(), t1 = (btns[1].textContent || "").trim();
+          return (AFFIRM.test(t0) && DENY.test(t1)) || (DENY.test(t0) && AFFIRM.test(t1));
+        });
+        const seenSurvey = new Set();
+        pairContainers.forEach((pc) => {
+          // 토글 쌍이 각자 래퍼(.check-q 등)로 감싸진 경우가 흔하므로, 중간 레벨이 1개여도 멈추지 말고
+          // '2개 이상을 포함하는 가장 가까운 공통 조상'에 도달할 때까지 상향한다.
+          let root = pc;
+          for (let i = 0; i < 12 && root.parentElement; i++) {
+            root = root.parentElement;
+            const cnt = [...root.querySelectorAll("*")].filter((e) => pairContainers.includes(e)).length;
+            if (cnt >= 2) break;
+          }
+          const key = selectorOf(root);
+          if (seenSurvey.has(key)) return;
+          const toggles = [...root.querySelectorAll("*")].filter((e) => pairContainers.includes(e));
+          if (toggles.length < 2) return;
+          seenSurvey.add(key);
+          const questions = toggles.map((tg) => {
+            const parentTxt = ((tg.parentElement && tg.parentElement.textContent) || "").replace(/\s+/g, " ").trim();
+            return parentTxt.replace(/(예|아니오|네|아니요|yes|no)/gi, "").trim().slice(0, 60);
+          }).filter(Boolean);
+          const resultEl = root.querySelector('[class*="result"], [class*="judge"], [class*="output"]');
+          out.surveys.push({
+            container: key.slice(0, 50),
+            questionCount: toggles.length,
+            questions: questions.slice(0, 12),
+            display: "동시 노출(전체 문항 표시)",   // 토글 쌍 다수가 동시에 DOM에 존재 = 한 화면 노출
+            hasProgressBar: !!root.querySelector('[class*="progress"], [class*="gauge"], [role="progressbar"]'),
+            sequential: !!root.querySelector('[class*="step"], [data-step], [class*="next-q"], [class*="slide"]'),
+            hasResultEl: !!resultEl,
+            resultText: resultEl ? (resultEl.textContent || "").replace(/\s+/g, " ").trim().slice(0, 100) : "",
+          });
+        });
+
+        // 2) 카운트업/타이머 위젯: 숫자 카운터 + '시작' 류 트리거 + setInterval 존재.
+        // 리스트 번호(li "01","02"…)·표 셀 오탐을 막기 위해: li/dt/dd/th/ol/ul 제외, 선행0 다중자릿수(리스트 인덱스) 제외,
+        // 트리거는 3단계 이내 근접 조상에서만 탐색, counter 셀렉터 중복 제거.
+        const hasInterval = /setInterval|requestAnimationFrame/.test(document.documentElement.innerHTML);
+        const seenTimer = new Set();
+        document.querySelectorAll('[class*="count"], [class*="timer"], [class*="num"], [id*="count"], [id*="timer"]').forEach((el) => {
+          if (out.timers.length > 6) return;
+          if (/^(li|dt|dd|th|ol|ul)$/i.test(el.tagName)) return;
+          const txt = (el.textContent || "").trim();
+          if (!/^\d{1,3}$/.test(txt) || /^0\d/.test(txt)) return;
+          let scope = el;
+          for (let i = 0; i < 3 && scope.parentElement; i++) scope = scope.parentElement;
+          const trigger = [...scope.querySelectorAll("button, a, span, div")].find((b) => {
+            const bt = (b.textContent || "").trim();
+            return bt.length <= 8 && /시작|start|측정|begin|go/i.test(bt);
+          });
+          if (!trigger) return;
+          const key = selectorOf(el);
+          if (seenTimer.has(key)) return;
+          seenTimer.add(key);
+          out.timers.push({
+            counter: key.slice(0, 50),
+            initial: txt,
+            trigger: (trigger.textContent || "").trim().slice(0, 12),
+            usesInterval: hasInterval,
+            context: (scope.textContent || "").replace(/\s+/g, " ").trim().slice(0, 160),
+          });
+        });
+
+        return out;
+      } catch (e) {
+        return { surveys: [], timers: [], error: String(e && e.message || e) };
+      }
+    })();
+
     return {
       title: document.title,
       url: location.href,
@@ -374,6 +458,7 @@ async function collectPageSignals(page) {
       forms,
       designSignals,
       interactionPatterns,
+      selfTestWidgets,
       storage: {
         localStorage: Object.keys(localStorage || {}).slice(0, 30),
         sessionStorage: Object.keys(sessionStorage || {}).slice(0, 30),
@@ -535,6 +620,21 @@ function markdownReport({ baseUrl, pages, generatedAt }) {
         if (pattern.heading) lines.push(`  - 섹션: ${pattern.heading}`);
         if (pattern.panelTitles && pattern.panelTitles.length) lines.push(`  - 패널: ${pattern.panelTitles.join(" / ")}`);
       }
+    }
+    const stw = page.initial.selfTestWidgets;
+    if (stw && ((stw.surveys && stw.surveys.length) || (stw.timers && stw.timers.length))) {
+      lines.push("");
+      lines.push("### 자가진단 위젯 (★ 인터랙션 내부 동작 실측 — 분석가는 이 값을 추정보다 우선)");
+      lines.push("> 아래는 DOM 실측값이다. **상태머신·진행바·결과 임계값을 임의 창작하지 말 것** — 여기 없는 동작은 \"미확인(추정)\"으로 표기한다.");
+      (stw.surveys || []).forEach((s) => {
+        lines.push(`- **예/아니오 토글 설문** \`${s.container}\` · ${s.questionCount}문항 · ${s.display} · 진행바 ${s.hasProgressBar ? "있음" : "**없음(실측)**"} · 순차분기 ${s.sequential ? "있음" : "**없음(실측)**"} · 결과영역 ${s.hasResultEl ? "있음" : "없음"}`);
+        if (s.questions && s.questions.length) s.questions.forEach((q, i) => lines.push(`  ${i + 1}. ${q}`));
+        if (s.resultText) lines.push(`  - 결과 문구: ${s.resultText}`);
+      });
+      (stw.timers || []).forEach((t) => {
+        lines.push(`- **카운트업 타이머** \`${t.counter}\` · 초기값 \`${t.initial}\` · 트리거 "${t.trigger}" · setInterval ${t.usesInterval ? "사용" : "미확인"}`);
+        if (t.context) lines.push(`  - 맥락/판정: ${t.context}`);
+      });
     }
     const changedStates = page.clickStates.filter((item) => item.changed);
     if (changedStates.length) {
