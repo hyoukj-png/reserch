@@ -44,3 +44,7 @@ node_modules
 _workspace*/
 .__workspace*
 
+# Local workspaces & temporary directories
+webstart/
+
+

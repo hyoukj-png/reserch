@@ -447,6 +447,44 @@ async function collectPageSignals(page) {
       }
     })();
 
+    // 섹션별 인터랙션 인벤토리 — page-global 신호(Swiper·AOS·reveal)를 '섹션 단위'로 귀속.
+    // 누락/오귀속 방지: Swiper 역할을 클래스명으로 추측(main_view=히어로 식 오판)하지 말고 '어느 섹션에 있는지·슬라이드 몇 장인지'로 확정,
+    // AOS·reveal을 섹션별로 집계해 "어느 섹션이 모션 집중인지"(sec03 방향리빌 21개 등)를 보존한다.
+    const sectionInteractions = (() => {
+      try {
+        const all = [...document.querySelectorAll('section,[class*="sec"],[id^="st"],[class*="section"]')]
+          .filter((el) => el.offsetParent !== null && el.getBoundingClientRect().height > 120);
+        const tops = all.filter((el) => !all.some((o) => o !== el && o.contains(el)));
+        const headingOf = (el) => {
+          const h = el.querySelector('h1,h2,h3,[class*="tit"]');
+          return h ? (h.textContent || "").replace(/\s+/g, " ").trim().slice(0, 30) : "";
+        };
+        return tops.slice(0, 24).map((el) => {
+          const aos = {};
+          el.querySelectorAll("[data-aos]").forEach((e) => { const t = e.getAttribute("data-aos"); if (t) aos[t] = (aos[t] || 0) + 1; });
+          const swipers = [...el.querySelectorAll(".swiper, .swiper-container")]
+            .filter((sw) => { const p = sw.parentElement && sw.parentElement.closest(".swiper, .swiper-container"); return !p; })
+            .map((sw) => {
+              const s = sw.swiper;
+              const realSlides = sw.querySelectorAll(".swiper-slide:not(.swiper-slide-duplicate)").length;
+              const cls = (sw.className || "").toString().split(/\s+/).filter((c) => c && !/^swiper/.test(c)).slice(0, 2).join(" ") || "swiper";
+              return { cls, slides: realSlides, spv: s ? s.params.slidesPerView : null, effect: s ? s.params.effect : null, autoplay: s && s.params.autoplay ? (s.params.autoplay.delay || true) : false };
+            });
+          return {
+            id: el.id || "",
+            cls: (el.className || "").toString().slice(0, 24),
+            heading: headingOf(el),
+            afxReveal: el.querySelectorAll(".afx-reveal").length,
+            afxFade: el.querySelectorAll(".afx-fade").length,
+            aos,
+            swipers,
+            bigSize: el.querySelectorAll(".big_size").length,
+            expandPanels: el.querySelectorAll(".sys_con").length,
+          };
+        });
+      } catch (e) { return []; }
+    })();
+
     return {
       title: document.title,
       url: location.href,
@@ -458,6 +496,7 @@ async function collectPageSignals(page) {
       forms,
       designSignals,
       interactionPatterns,
+      sectionInteractions,
       selfTestWidgets,
       storage: {
         localStorage: Object.keys(localStorage || {}).slice(0, 30),
@@ -465,6 +504,48 @@ async function collectPageSignals(page) {
       },
     };
   });
+}
+
+// 스크롤 연동 요소 검출 — 여러 스크롤 위치에서 inline 스타일(transform/right/left/top)이 변하는 요소를 찾는다.
+// 단일 스냅샷(collectPageSignals)이 구조적으로 놓치는 패럴랙스/스크롤 드리프트(.big_size 가로 이동 등)를 포착한다.
+async function collectScrollLinked(page) {
+  try {
+    await page.evaluate(() => {
+      window.__sl = [...document.querySelectorAll("*")].filter((e) => {
+        const s = e.getAttribute("style") || "";
+        const cls = (e.className || "").toString();
+        return /(transform|right|left|top)\s*:/.test(s) && !/swiper-wrapper|swiper-slide/.test(cls);
+      }).slice(0, 500);
+    });
+    const snap = () => page.evaluate(() => window.__sl.map((e) => {
+      const s = e.getAttribute("style") || "";
+      const g = (re) => { const m = s.match(re); return m ? m[1].trim() : ""; };
+      const sec = e.closest('[class*="sec"],section');
+      return {
+        sec: sec ? ((sec.id || "") + " " + (sec.className || "").toString().slice(0, 14)).trim() : "",
+        cls: (e.className || "").toString().slice(0, 24),
+        transform: g(/transform:\s*([^;]+)/),
+        right: g(/right:\s*([^;]+)/),
+        top: g(/top:\s*([^;]+)/),
+      };
+    }));
+    const snaps = [];
+    for (const f of [0, 0.35, 0.7]) {
+      await page.evaluate((y) => window.scrollTo(0, document.body.scrollHeight * y), f);
+      await page.waitForTimeout(600);
+      snaps.push(await snap());
+    }
+    await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+    const out = [];
+    const n = (snaps[0] || []).length;
+    for (let i = 0; i < n; i++) {
+      const seq = snaps.map((s) => s[i]).filter(Boolean);
+      if (seq.length < 2) continue;
+      const prop = ["right", "transform", "top"].find((p) => new Set(seq.map((v) => v[p])).size > 1);
+      if (prop) out.push({ sec: seq[0].sec, cls: seq[0].cls, prop, from: seq[0][prop], to: seq[seq.length - 1][prop] });
+    }
+    return out.slice(0, 20);
+  } catch (e) { return []; }
 }
 
 function changedEnough(before, after) {
@@ -610,6 +691,27 @@ function markdownReport({ baseUrl, pages, generatedAt }) {
         ds.revealRules.slice(0, 4).forEach((r) => lines.push(`  - \`${r.selector}\` → \`${r.css}\``));
       }
     }
+    const si = page.initial.sectionInteractions || [];
+    if (si.length) {
+      lines.push("");
+      lines.push("### 섹션별 인터랙션 인벤토리 (★ 섹션 귀속 — 역할 추측 금지)");
+      lines.push("> Swiper 역할은 **클래스명이 아니라 소속 섹션·슬라이드 수**로 확정한다(예: `main_view`를 '히어로'로 추측 금지 — 실제 소속 섹션을 보라). AOS·reveal은 섹션별 집계 — 모션 집중 섹션을 보존한다. **Swiper 슬라이드 N장이면 슬라이드별 콘텐츠가 외부 영역에 교체 주입될 수 있으니(예: 장비 .equip_content) N개 상태를 모두 캡처할 것.**");
+      lines.push("| 섹션 | 헤딩 | reveal | AOS(방향×수) | Swiper(슬라이드) | big_size | 확장패널 |");
+      lines.push("|------|------|--------|--------------|------------------|----------|----------|");
+      si.forEach((s) => {
+        const aos = Object.entries(s.aos).map(([k, v]) => `${k}×${v}`).join("·") || "—";
+        const sw = s.swipers.length ? s.swipers.map((w) => `${w.cls}(${w.slides}장${w.effect ? "," + w.effect : ""})`).join(", ") : "—";
+        const reveal = (s.afxReveal + s.afxFade) || "—";
+        lines.push(`| \`${s.id || s.cls}\` | ${s.heading || "—"} | ${reveal} | ${aos} | ${sw} | ${s.bigSize || "—"} | ${s.expandPanels || "—"} |`);
+      });
+    }
+    const sl = page.initial.scrollLinked || [];
+    if (sl.length) {
+      lines.push("");
+      lines.push("### 스크롤 연동 요소 (★ 패럴랙스/드리프트 — 단일 스냅샷으로는 안 보임)");
+      lines.push("> 여러 스크롤 위치에서 inline 스타일이 변한 요소 = **스크롤 진행에 연동된 모션**(가로 패럴랙스 워드마크 등). 정적·단일 상태 수집이 구조적으로 놓치므로, 형태·이동량을 그대로 명세할 것.");
+      sl.forEach((o) => lines.push(`- \`${o.cls || "(el)"}\`${o.sec ? ` · 섹션 ${o.sec}` : ""} · **${o.prop}** \`${o.from}\` → \`${o.to}\``));
+    }
     const patterns = page.initial.interactionPatterns || [];
     if (patterns.length) {
       lines.push("");
@@ -702,6 +804,7 @@ async function inspectPage(browser, url, outputDir, options) {
   await gotoStable(page, url);
   await page.screenshot({ path: path.join(outputDir, screenshots.pc), fullPage: true });
   const initial = await collectPageSignals(page);
+  initial.scrollLinked = await collectScrollLinked(page);
   const clickStates = options.clicks
     ? await exploreClicks(context, url, initial, stateDir, options.maxClicks)
     : [];

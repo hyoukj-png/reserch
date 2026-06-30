@@ -17,6 +17,13 @@ description: 웹사이트 리뉴얼 분석 산출물의 완전성·정합성·�
 기대 산출물 6종이 모두 존재하고 비어있지 않은가:
 `05-components.md`, `07-performance-a11y.md`, `08-renewal-insights.md`, `BENCHMARK_RECIPE.md`, `MASTER_REPLICATION_PROMPT.md`, `COMPLETION_REPORT.md`. 누락 시 책임 에이전트 명시.
 
+### 1.5 인터랙션 누락 4유형 점검 (★afneyeclinic 회귀 — 단일 스냅샷 맹점)
+`09-runtime-interactions.md`가 **개선된 스크립트 최신본**인지부터 확인(구 `runtime_extract.*`만 있고 09에 "섹션별 인터랙션 인벤토리"·"스크롤 연동 요소" 섹션이 없으면 stale → 재수집 요청, blocker). 그 다음 산출물이 다음을 빠뜨리지 않았는지 교차 확인:
+- **(A) 상태 교체형:** 인벤토리의 `Swiper(N장)` 섹션에 대해 산출물이 **N개 항목 콘텐츠**를 담았는가, 아니면 active 1개만 담고 끝냈는가(예: 장비 13종을 1개로 축소). 1개만 있으면 blocker.
+- **(B) 섹션 귀속:** Swiper/슬라이더 역할이 **클래스명 추측**이 아니라 인벤토리의 소속 섹션과 일치하는가(`main_view`=히어로 식 오귀속 적발).
+- **(C) 스크롤 연동:** "스크롤 연동 요소"에 잡힌 패럴랙스/드리프트(예: `.big_size`)가 산출물 모션 명세에 반영됐는가.
+- **(D) ★실측 근거:** ★실측으로 표기된 인터랙션이 09에 실제 근거가 있는가(근거 없는 ★실측은 환각, blocker).
+
 ### 2. 기술→페이지 매핑 정합성 (환각 검증, 최우선)
 `BENCHMARK_RECIPE.md`와 `_workspace/tech_findings.md`가 인용한 페이지 경로가 `pages.json`에 실재하는가. **스크립트로 대조:**
 
