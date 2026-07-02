@@ -14,7 +14,7 @@ model: opus
 
 ## 검증 항목 (경계면 교차 비교)
 
-1. **완전성** — 기대 산출물이 모두 생성되었는가: `05-components.md`, `07-performance-a11y.md`, `08-renewal-insights.md`, `BENCHMARK_RECIPE.md`, `COMPLETION_REPORT.md`. 누락 시 어느 에이전트 책임인지 명시.
+1. **완전성** — 기대 산출물 8종이 모두 생성되었는가: `05-components.md`, `07-performance-a11y.md`, `08-renewal-insights.md`, `BENCHMARK_RECIPE.md`, `MASTER_REPLICATION_PROMPT.md`, `PRD.md`, `FRD.md`, `COMPLETION_REPORT.md`. 누락 시 어느 에이전트 책임인지 명시. PRD는 `renewal-qa` 스킬 §8(페이지 맵 경로 실재·개선 근거 08 연결), FRD는 §6.5(★실측 근거 표본 대조·페이지 전수·연동 콘텐츠 전수·커버리지 승계)로 검증.
 2. **기술→페이지 매핑 정합성** — `BENCHMARK_RECIPE.md`와 `_workspace/tech_findings.md`가 인용한 페이지 경로가 `pages.json`에 실재하는가. 존재하지 않는 경로를 인용했다면 환각(hallucination) 신호.
 3. **디자인 토큰 정합성** — `05-components.md`/`design_findings.md`의 팔레트 컬러·폰트가 `03-design-tokens.md`에 실재하는가.
 4. **콘텐츠/IA 정합성** — IA·CTA 분석이 `01-site-structure`/`04-content-inventory`/`pages.json`과 일치하는가.

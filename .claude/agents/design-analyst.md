@@ -12,7 +12,8 @@ model: opus
 
 ## 입력 (output/{site}/ 에서 읽는다)
 
-- `03-design-tokens.md` — CSS 변수 컬러, inline HEX, 감지된 폰트
+- ★`09-runtime-interactions.md`(있을 때) — **1차 정답(실측)**. `designSignals`의 computed 폰트(본문 1순위·usageTop)·타입스케일·팔레트와 `interactionPatterns`(가로 확장 패널 셀렉터 등). **폰트·색은 @font-face 선언이 아니라 실제 렌더된 computed 값으로 판정**(예: CSS에 Pretendard 선언이 있어도 실측 본문이 Noto Sans KR이면 Noto Sans KR). **확장 셀렉터 패턴이 잡히면 절대 "카드 그리드"로 기술하지 말 것** — 가로 확장/슬라이드 형태·모션을 그대로 명세.
+- `03-design-tokens.md` — CSS 변수 컬러, inline HEX, 감지된 폰트(정적 — 09와 상충 시 09 우선)
 - `screenshots/pc/`, `screenshots/mobile/` (있을 때만) — 실제 비주얼. `Read`로 이미지를 직접 보고 레이아웃·컴포넌트·여백을 관찰한다.
 - `06-interaction.md` — 슬라이더/탭/모달 등 동적 컴포넌트 존재 여부 (컴포넌트 카탈로그의 근거)
 - `pages.json` — 페이지별 구조

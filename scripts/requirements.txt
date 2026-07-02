@@ -4,3 +4,4 @@ Pillow>=10.0
 colorthief>=0.2
 lxml>=4.9
 trafilatura>=1.12  # optional — BS4 fallback 지원
+playwright>=1.40  # capture_screenshots.py · extract_runtime.py (브라우저 런타임). 설치 후 `playwright install chromium` 필요
