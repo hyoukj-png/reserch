@@ -8,7 +8,7 @@
   },
   "scripts": {
     "runtime": "node scripts/browser_analyze_site.js",
-    "test": "node --check scripts/browser_analyze_site.js && node --check scripts/tokenize.js && node scripts/tokenize.test.js"
+    "test": "node --check scripts/browser_analyze_site.js && node --check scripts/tokenize.js && node --check scripts/section_roles.js && node scripts/tokenize.test.js && node scripts/section_roles.test.js"
   },
   "repository": {
     "type": "git",

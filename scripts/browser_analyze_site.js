@@ -11,6 +11,7 @@ const path = require("path");
 const { URL } = require("url");
 const { chromium } = require("playwright");
 const { buildArtifacts } = require("./tokenize");
+const { extractSectionRoles } = require("./section_roles");
 
 const MAX_STYLE_SAMPLES = 4000;
 
@@ -293,6 +294,49 @@ async function collectComputedStyles(page, cap) {
   }, cap);
 }
 
+async function collectSections(page) {
+  // 페이지의 최상위 "밴드"(섹션) 메타데이터를 수집 → section_roles 가 역할을 분류.
+  return page.evaluate(() => {
+    const text2k = (el) => (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 2000);
+    const candidateSel = [
+      "section", "header", "footer", "nav", "[role='region']",
+      "main > div", "body > div", "[class*='section']", "[class*='Section']",
+    ].join(",");
+    const raw = [...document.querySelectorAll(candidateSel)];
+    const candSet = new Set(raw);
+    const picked = [];
+    for (const el of raw) {
+      let st, rect;
+      try { st = getComputedStyle(el); rect = el.getBoundingClientRect(); } catch (_) { continue; }
+      if (st.display === "none" || st.visibility === "hidden") continue;
+      if (rect.height < 140 || rect.width < 200) continue;
+      // 중첩 제거: 다른 후보가 조상이면 건너뜀(최상위 밴드만 유지)
+      let anc = el.parentElement, nested = false;
+      while (anc) { if (candSet.has(anc)) { nested = true; break; } anc = anc.parentElement; }
+      if (nested) continue;
+      picked.push({ el, rect });
+      if (picked.length >= 60) break;
+    }
+    return picked.map(({ el, rect }) => ({
+      tag: el.tagName.toLowerCase(),
+      className: typeof el.className === "string" ? el.className.slice(0, 200) : "",
+      id: el.id || "",
+      text: text2k(el),
+      headings: [...el.querySelectorAll("h1,h2,h3,h4,h5,h6")]
+        .map((h) => (h.innerText || "").replace(/\s+/g, " ").trim().slice(0, 120))
+        .filter(Boolean).slice(0, 6),
+      cardCount: el.querySelectorAll("[class*='card'],[class*='Card'],article,li,[class*='item'],[class*='col-']").length,
+      buttonCount: el.querySelectorAll("a[href],button,[role='button']").length,
+      bounds: {
+        x: Math.round(rect.left + window.scrollX),
+        y: Math.round(rect.top + window.scrollY),
+        w: Math.round(rect.width),
+        h: Math.round(rect.height),
+      },
+    })).slice(0, 40);
+  });
+}
+
 function changedEnough(before, after) {
   if (before.url !== after.url) return true;
   if (before.bodyClass !== after.bodyClass) return true;
@@ -423,6 +467,22 @@ function markdownReport({ baseUrl, pages, generatedAt }) {
         }
       }
     }
+    const sr = page.sectionRoles;
+    if (sr && sr.sections && sr.sections.length) {
+      lines.push("");
+      lines.push("### 섹션 역할 자동 분류 (IA 시드)");
+      lines.push("");
+      lines.push("> 라이브 DOM 휴리스틱 분류 결과입니다. content-analyst 가 한국어 IA로 재해석하는 시드로만 쓰세요(낮은 confidence는 `needsSmart`).");
+      lines.push("");
+      lines.push(`**읽기 순서:** ${sr.readingOrder.join(" → ")}`);
+      lines.push("");
+      lines.push("| # | 역할 | 헤딩 | 카드 | 버튼 | confidence |");
+      lines.push("|---|------|------|------|------|-----------|");
+      sr.sections.slice(0, 24).forEach((s, i) => {
+        const head = (s.heading || "").replace(/\|/g, "/").slice(0, 50);
+        lines.push(`| ${i + 1} | ${s.role}${s.subrole ? `/${s.subrole}` : ""} | ${head} | ${s.cardCount} | ${s.buttonCount} | ${s.confidence}${s.needsSmart ? " ⚠️" : ""} |`);
+      });
+    }
     if (page.consoleErrors.length) {
       lines.push("");
       lines.push("### Console Errors");
@@ -475,6 +535,8 @@ async function inspectPage(browser, url, outputDir, options) {
   await page.screenshot({ path: path.join(outputDir, screenshots.pc), fullPage: true });
   const initial = await collectPageSignals(page);
   const styleSamples = await collectComputedStyles(page, MAX_STYLE_SAMPLES).catch(() => []);
+  const sections = await collectSections(page).catch(() => []);
+  const sectionRoles = extractSectionRoles(sections);
   const clickStates = options.clicks
     ? await exploreClicks(context, url, initial, stateDir, options.maxClicks)
     : [];
@@ -504,6 +566,7 @@ async function inspectPage(browser, url, outputDir, options) {
     consoleErrors,
     clickStates,
     styleSamples,
+    sectionRoles,
   };
 }
 
@@ -538,7 +601,7 @@ async function main() {
         }));
       } catch (error) {
         console.warn(`  failed: ${error.message}`);
-        results.push({ url: pageUrl, error: error.message, initial: { title: "", clickables: [], dialogs: [], forms: [] }, screenshots: {}, network: { byType: {}, thirdParty: [] }, consoleErrors: [], clickStates: [], styleSamples: [] });
+        results.push({ url: pageUrl, error: error.message, initial: { title: "", clickables: [], dialogs: [], forms: [] }, screenshots: {}, network: { byType: {}, thirdParty: [] }, consoleErrors: [], clickStates: [], styleSamples: [], sectionRoles: { sections: [], counts: {}, readingOrder: [] } });
       }
     }
   } finally {
@@ -561,6 +624,15 @@ async function main() {
   };
 
   fs.writeFileSync(path.join(outputDir, "runtime", "runtime-analysis.json"), JSON.stringify(data, null, 2), "utf8");
+
+  // 섹션 역할(IA 시드)을 별도 기계가독 파일로도 저장
+  const sectionRolesOut = {
+    generated_at: generatedAt,
+    base_url: args.url,
+    pages: results.map((r) => ({ url: r.url, ...(r.sectionRoles || { sections: [], counts: {}, readingOrder: [] }) })),
+  };
+  fs.writeFileSync(path.join(outputDir, "runtime", "section-roles.json"), JSON.stringify(sectionRolesOut, null, 2), "utf8");
+  console.log("Saved runtime/section-roles.json");
   fs.writeFileSync(path.join(outputDir, "09-runtime-interactions.md"), markdownReport({
     baseUrl: args.url,
     pages: results,

@@ -19,6 +19,7 @@ description: 웹사이트 리뉴얼 분석에서 정보구조(IA)·콘텐츠·�
 4. `04-content-inventory.md` — 페이지별 제목·미리보기·CTA
 5. `pages/_index.md` + 주요 `pages/*.md` — 1차 내비/대표 랜딩은 전문 정독, 나머지는 제목·미리보기로 분류
 6. `pages.json` — URL·depth·제목 메타(근거 데이터)
+7. `runtime/section-roles.json`(또는 `09-runtime-interactions.md`의 "섹션 역할 자동 분류" 표) — **있으면 페이지 내부 IA 시드로 사용.** 라이브 DOM에서 페이지별 섹션을 hero/feature-grid/pricing-table/faq/stats/steps/comparison/gallery/logo-wall/testimonial/cta/nav/footer 등으로 휴리스틱 분류한 결과(읽기 순서 포함). **결정값이 아니라 시드**다 — `needsSmart`(confidence < 0.5) 항목은 신뢰하지 말고 본문/스크린샷으로 검증한 뒤 한국어 IA로 재해석하라.
 
 페이지가 50+면 대표 페이지 우선 정독, 나머지는 제목/미리보기 분류로 효율화. `pages/`가 없으면 04-content-inventory 미리보기만으로 분석하고 한계 명시.
 
@@ -36,6 +37,8 @@ description: 웹사이트 리뉴얼 분석에서 정보구조(IA)·콘텐츠·�
 | 유틸리티 | 개인정보/이용약관 | 1 | 푸터 |
 
 진단: depth 깊이, 메뉴 폭, IA 패턴(제품 중심/콘텐츠 중심/서비스 중심).
+
+> 사이트 전체 IA(페이지 계층)와 별개로, **대표 랜딩의 페이지 내부 IA**(섹션 흐름)도 진단한다. `runtime/section-roles.json`의 `readingOrder`가 있으면 "hero → stats → feature-grid → pricing-table → faq → cta → footer" 같은 **섹션 시퀀스**를 시드로 삼아, 설득 구조(문제 제기→근거→가격→전환)가 적절한지 평가하라. 시드의 라벨은 본문으로 검증 후 한국어로 재서술한다.
 
 ### 2. 콘텐츠 유형 & 밀도
 섹션별 분량과 메시징 톤:

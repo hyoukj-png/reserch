@@ -55,10 +55,10 @@ npm run runtime -- https://example.com/ --max-pages 8 --max-clicks 14
 > **범위 선택:** 기본은 전체 사이트 크롤링이다. `--single-page`를 붙이면 sitemap/링크 크롤링을 건너뛰고 **제공한 URL 한 페이지만** 수집한다 → `pages.json`이 1페이지가 되어 런타임 보강·AI 분석이 모두 1페이지로 연쇄 축소(토큰·시간 절약). 특정 랜딩/제품 페이지만 벤치마킹할 때 사용.
 
 런타임 보강 산출물:
-- `output/{site}/09-runtime-interactions.md`
-- `output/{site}/10-design-tokens-structured.md` — computedStyle 기반 토큰(군집 팔레트·스케일·모션·WCAG·디자인 스코어 A–F)
+- `output/{site}/09-runtime-interactions.md` — 클릭 후 동적 상태 + 섹션 역할 자동 분류(IA 시드)
+- `output/{site}/10-design-tokens-structured.md` — computedStyle 기반 토큰(군집 팔레트·스케일·모션·WCAG·7카테고리 디자인 스코어 A–F)
 - `output/{site}/tokens/` — 기계가독 토큰: `tokens.dtcg.json`(W3C DTCG)·`tokens.tailwind.js`(preset)·`tokens.css`(변수)·`tokens.raw.json`
-- `output/{site}/runtime/runtime-analysis.json`
+- `output/{site}/runtime/runtime-analysis.json` · `output/{site}/runtime/section-roles.json`(섹션 역할 IA 시드)
 - `output/{site}/screenshots/pc/*.png`
 - `output/{site}/screenshots/mobile/*.png`
 

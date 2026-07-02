@@ -337,14 +337,31 @@ function scoreDesign(tokens) {
   else if (spacingSteps <= 22) scores.spacingConsistency = 72;
   else { scores.spacingConsistency = 55; issues.push(`간격 값 ${spacingSteps}종 — 4/8px 그리드로 정렬 권장`); }
 
-  // 4. 대비(접근성)
+  // 4. Shadow(엘리베이션) 일관성 — 실제 프로덕션 사이트는 hover/focus 변형 포함 10~18종이 흔함
+  const shadowCount = tokens.shadowsTotal != null ? tokens.shadowsTotal : tokens.shadows.length;
+  if (shadowCount === 0) scores.shadowConsistency = 85;
+  else if (shadowCount <= 5) scores.shadowConsistency = 100;
+  else if (shadowCount <= 10) scores.shadowConsistency = 90;
+  else if (shadowCount <= 18) scores.shadowConsistency = 78;
+  else if (shadowCount <= 28) scores.shadowConsistency = 62;
+  else { scores.shadowConsistency = 50; issues.push(`그림자 ${shadowCount}종 — 3단계(sm/md/lg) 엘리베이션으로 정리 권장`); }
+
+  // 5. Radius 일관성
+  const radiiCount = tokens.radius.length;
+  if (radiiCount <= 4) scores.radiusConsistency = 100;
+  else if (radiiCount <= 7) scores.radiusConsistency = 90;
+  else if (radiiCount <= 10) scores.radiusConsistency = 80;
+  else if (radiiCount <= 15) scores.radiusConsistency = 65;
+  else { scores.radiusConsistency = 45; issues.push(`radius ${radiiCount}종 — 3~4개로 표준화 권장`); }
+
+  // 6. 대비(접근성)
   const fails = tokens.contrast.filter((c) => c.ratio < 4.5).length;
   const total = tokens.contrast.length || 1;
   const passRate = 1 - fails / total;
   scores.accessibility = Math.round(passRate * 100);
   if (fails > 0) issues.push(`대비 4.5:1 미달 색쌍 ${fails}/${total}개`);
 
-  // 5. 모션 일관성
+  // 7. 모션 일관성
   const dur = tokens.motion.durations.length;
   if (dur === 0) scores.motionConsistency = 80;
   else if (dur <= 4) scores.motionConsistency = 100;
@@ -352,7 +369,17 @@ function scoreDesign(tokens) {
   else { scores.motionConsistency = 65; issues.push(`전이 시간 ${dur}종 — 토큰화로 정리 권장`); }
 
   for (const k of Object.keys(scores)) scores[k] = Math.round(clamp(scores[k], 0, 100));
-  const overall = Math.round(Object.values(scores).reduce((a, b) => a + b, 0) / Object.keys(scores).length);
+
+  // 가중 평균 — design-extract scoring.js 비중을 7카테고리로 보정(합 100)
+  const weights = {
+    colorDiscipline: 18, typographyConsistency: 18, spacingConsistency: 16,
+    accessibility: 15, motionConsistency: 13, shadowConsistency: 10, radiusConsistency: 10,
+  };
+  let totalWeight = 0, weightedSum = 0;
+  for (const [k, w] of Object.entries(weights)) {
+    if (scores[k] !== undefined) { weightedSum += scores[k] * w; totalWeight += w; }
+  }
+  const overall = totalWeight ? Math.round(weightedSum / totalWeight) : 0;
   return { scores, overall, grade: letterGrade(overall), issues };
 }
 
@@ -456,6 +483,7 @@ function tokenizeFromSamples(samples) {
     spacing,
     radius,
     shadows: shadowTokens,
+    shadowsTotal: shadows.size,
     gradients: gradientTokens,
     motion,
     contrast,
@@ -570,7 +598,7 @@ function toMarkdown(tokens, baseUrl) {
 
   L.push(`## 🏅 디자인 스코어: **${s.grade}** (${s.overall}/100)`, "");
   L.push("| 카테고리 | 점수 |", "|---|---|");
-  const labels = { colorDiscipline: "컬러 규율", typographyConsistency: "타이포 일관성", spacingConsistency: "간격 규율", accessibility: "접근성(대비)", motionConsistency: "모션 일관성" };
+  const labels = { colorDiscipline: "컬러 규율", typographyConsistency: "타이포 일관성", spacingConsistency: "간격 규율", shadowConsistency: "엘리베이션(그림자) 일관성", radiusConsistency: "Radius 일관성", accessibility: "접근성(대비)", motionConsistency: "모션 일관성" };
   for (const [k, v] of Object.entries(s.scores)) L.push(`| ${labels[k] || k} | ${v} |`);
   if (s.issues.length) { L.push("", "**개선 포인트:**"); s.issues.forEach((i) => L.push(`- ${i}`)); }
   L.push("");

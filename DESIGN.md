@@ -28,7 +28,7 @@
         ├── 07-performance-a11y.md
         ├── 08-renewal-insights.md
         ├── 09-runtime-interactions.md
-        ├── 10-design-tokens-structured.md   ← computedStyle 기반 토큰(스코어·대비 포함)
+        ├── 10-design-tokens-structured.md   ← computedStyle 기반 토큰(7카테고리 스코어·대비 포함)
         ├── BENCHMARK_RECIPE.md
         ├── MASTER_REPLICATION_PROMPT.md
         ├── COMPLETION_REPORT.md
@@ -38,7 +38,8 @@
         │   ├── tokens.tailwind.js           ← Tailwind preset
         │   └── tokens.css                   ← CSS 변수
         ├── runtime/
-        │   └── runtime-analysis.json
+        │   ├── runtime-analysis.json
+        │   └── section-roles.json           ← 섹션 역할 IA 시드(content-analysis 소비)
         ├── screenshots/
         │   ├── pc/
         │   └── mobile/
@@ -156,3 +157,4 @@ lighthouse (npx lighthouse)
 | 날짜 | 내용 |
 |---|---|
 | 2026-02-20 | 초기 설계 — analyze-for-renewal.md 기반 Antigravity 환경 적응 |
+| 2026-06-27 | design-extract v12.21 재검토 후 인-스코프 격차 최신화 — (1) 디자인 스코어를 5→7카테고리(shadow·radius 추가) 가중 평균으로 정렬, (2) `scripts/section_roles.js` 신규 + 런타임 패스가 `runtime/section-roles.json`(섹션 역할 IA 시드) 생성, content-analysis가 소비. v12.21 신규 기능(studio/verify/멀티플랫폼)은 계획서 §4 범위 밖으로 제외 |

@@ -1,8 +1,12 @@
 # 개선 계획서 — `design-extract`(designlang) 벤치마킹 비교 분석
 
 > **목적:** 외부 오픈소스 [`Manavarya09/design-extract`](https://github.com/Manavarya09/design-extract)(npm: **designlang** v12.16.0, MIT)를 우리 *웹사이트 리뉴얼 분석 하네스*와 심층 비교하여, 도입 가치가 높은 개선·보완 항목을 우선순위와 함께 제안한다.
-> **작성일:** 2026-06-09 · **상태:** 검토 대기 (실행 전)
+> **작성일:** 2026-06-09 · **상태:** P1·P2·P3 실행 완료 (2026-06-27 갱신)
 > **라이선스 참고:** 대상 레포는 **MIT** → 로직 포팅·참조 가능(저작권 고지 유지 권장).
+>
+> **진척(2026-06-27 v12.21 재검토):** P1(computedStyle·컬러 클러스터링·스케일)·P2-1(DTCG/Tailwind/CSS)·P2-2(모션 토큰)·P3-3(WCAG 대비)는 `tokenize.js`로 **완료**. 금회 **P3-1(디자인 스코어를 5→7카테고리 가중 평균)**·**P3-2(`section_roles.js` → `runtime/section-roles.json` IA 시드)**까지 완료. 대상은 v12.16→**v12.21**로 진화했으나 신규 기능(studio 토큰 에디터·verify 충실도·멀티플랫폼 emit)은 모두 본 문서 §4 제외 범위(제품화/창작/다중 플랫폼) 또는 P4(드리프트/비주얼 diff)에 해당 → **추가 도입 없음**. 남은 항목은 P4(드리프트·anatomy)뿐이며 수요 발생 시 착수.
+>
+> **⚠️ 재검토(2026-07-02) — 업스트림 소멸:** GitHub 리포 `Manavarya09/design-extract`와 저자 계정이 **모두 삭제(404)**. npm `designlang` 최신은 여전히 **v12.21.0**(2026-06-14 배포)으로 지난 검토와 동일 → **신규 도입 항목 없음**. 유일한 잔존 소스는 npm 타볼(`designlang-12.21.0.tgz`, MIT, 166파일/약 1.1MB)이며 업스트림은 사실상 **유지보수 종료**. 대응 계획은 §8 참조.
 
 ---
 
@@ -82,11 +86,11 @@ design-extract는 **"라이브 DOM의 computed style을 결정론적으로 읽�
 
 ### 🟡 P3 — 정량 지표·의미 분류 (리포트 설득력)
 
-**P3-1. 디자인 스코어/그레이드(A–F)**
+**P3-1. 디자인 스코어/그레이드(A–F)** ✅ *완료(2026-06-27): `tokenize.js scoreDesign`이 7카테고리(컬러 규율·타이포 일관성·간격 규율·엘리베이션·Radius·접근성·모션) 가중 평균으로 산출.*
 - *대상:* `extractors/scoring.js` — 컬러 규율/타이포 일관성/대비/모션 등 7카테고리, 실제 프로덕션 사이트(Linear/Stripe/Vercel) 기준으로 보정된 룰.
 - *우리 적용:* `08-renewal-insights.md`에 **현 사이트 점수 + 벤치마크 대상 점수 비교표** → 리뉴얼 ROI 설득 근거. (한국어 카테고리명으로 래핑.)
 
-**P3-2. section-roles 자동 분류 → IA 분석 보강**
+**P3-2. section-roles 자동 분류 → IA 분석 보강** ✅ *완료(2026-06-27): `scripts/section_roles.js` 포팅(한글 키워드 보강) → 런타임 패스가 `runtime/section-roles.json` 생성, content-analysis가 페이지 내부 IA 시드로 소비.*
 - *대상:* `extractors/section-roles.js` — hero/pricing/faq/stats/comparison/steps/gallery/bento 등 정규식+휴리스틱 라벨링.
 - *우리 적용:* `content-analysis` 스킬의 IA 해석에 자동 섹션 라벨을 시드로 제공(에이전트가 한국어로 재해석).
 
@@ -145,3 +149,20 @@ design-extract는 **"라이브 DOM의 computed style을 결정론적으로 읽�
 2. **출력 철학:** 기계가독 토큰 파일(DTCG/Tailwind)을 산출물에 **정식 추가**할지(개발 인수인계 강화) vs. 분석 리포트 순수성 유지?
 3. **구현 위치:** 토큰 추출을 Playwright(JS) 단일 경로로 통합할지, 파이썬 후처리와 분담할지?
 4. **포팅 vs 의존성:** `designlang`을 npm 의존성으로 직접 `require`할지(빠름, 버전추적) vs. 핵심 로직만 발췌 포팅할지(가벼움, 결합도↓)?
+   - *(2026-07-02 결론: 업스트림 소멸로 **발췌 포팅**이 유일한 선택지. §7-4 종결.)*
+
+---
+
+## 8. 소스 보존(클론) 계획 — 업스트림 소멸 대응 (2026-07-02 수립)
+
+**배경:** GitHub 원 리포·저자 계정 삭제로 P4(드리프트/비주얼 diff·컴포넌트 anatomy) 착수 시 참조할 소스가 npm 타볼밖에 없다. npm도 저자가 계정을 정리한 정황상 영구 보장이 없으므로, **최종판 v12.21.0을 로컬에 아카이브**해 둔다.
+
+| 단계 | 작업 | 비고 |
+|---|---|---|
+| **1. 타볼 아카이브(즉시)** | `curl -O https://registry.npmjs.org/designlang/-/designlang-12.21.0.tgz` → `vendor/designlang-12.21.0/`에 압축 해제 후 커밋 | MIT·166파일·언팩 약 1.1MB. `LICENSE` 파일 원본 유지(MIT 고지 의무) |
+| **2. 무결성 기록** | npm 레지스트리의 `dist.integrity`(sha512)를 `vendor/designlang-12.21.0/PROVENANCE.md`에 기록 + 출처(원 GitHub URL·삭제 확인일·npm 배포일) 명시 | 향후 소스 진위 검증용 |
+| **3. 의존 관계 명확화** | `vendor/`는 **참조 전용**(빌드·런타임에서 import 금지) — 우리 파이프라인은 이미 발췌 포팅(`tokenize.js`, `section_roles.js`)으로 자립 완료 | 결합도 0 유지 |
+| **4. P4 착수 시 활용** | 드리프트(`drift.js`)·비주얼 diff(`visual-diff.js`)·anatomy(`component-anatomy.js`)를 아카이브에서 발췌 포팅 | 수요 발생 시 |
+| **5. 하네스 동기화** | 아카이브 커밋 시 `CLAUDE.md` 변경 이력에 1행 추가 | — |
+
+**모니터링 종료:** 업스트림이 죽었으므로 정기 버전 재검토는 **중단**. 본 문서는 P4 착수 전까지 동결.
