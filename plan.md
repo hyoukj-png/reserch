@@ -28,3 +28,12 @@
 ## 검증
 
 - [x] 14. `node scripts/browser_analyze_site.js https://www.afneyeclinic.com --site-name runtime_smoke --max-pages 1` 스모크 — hiddenDialogs·swiperStates·coverage 실데이터 확인 (모달 5종 전수+트리거, Swiper 13장 외부 패널 13종 전문, 커버리지 표 생성 확인)
+
+## 추가: FRD 산출물 편입 (2026-07-02)
+
+- [x] 15. `references/frd-format.md` 신설 — afneyeclinic FRD.md 선례 기반 골격(§0~§9+부록) + ★실측/[추정]/[미확인] 철칙 + 09-runtime 데이터 소스 매핑 + 검증 게이트
+- [x] 16. benchmark-recipe SKILL.md — 산출 5종화, §5.5 FRD 단계·자가점검 추가
+- [x] 17. benchmark-synthesizer / qa-validator 에이전트 — 산출물 목록·입력(09) 갱신
+- [x] 18. renewal-analysis — 산출물 7종으로 전 구간 갱신
+- [x] 19. renewal-qa — §1 완전성 7종 + §6.5 FRD 정합성(★근거 표본 대조·페이지 전수·연동 콘텐츠 전수·커버리지 승계) 추가
+- [x] 20. CLAUDE.md — 산출물 목록·변경 이력 갱신

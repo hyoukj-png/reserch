@@ -14,8 +14,8 @@ description: 웹사이트 리뉴얼 분석 산출물의 완전성·정합성·�
 ## 검증 항목 (경계면 교차 비교)
 
 ### 1. 완전성
-기대 산출물 6종이 모두 존재하고 비어있지 않은가:
-`05-components.md`, `07-performance-a11y.md`, `08-renewal-insights.md`, `BENCHMARK_RECIPE.md`, `MASTER_REPLICATION_PROMPT.md`, `COMPLETION_REPORT.md`. 누락 시 책임 에이전트 명시.
+기대 산출물 7종이 모두 존재하고 비어있지 않은가:
+`05-components.md`, `07-performance-a11y.md`, `08-renewal-insights.md`, `BENCHMARK_RECIPE.md`, `MASTER_REPLICATION_PROMPT.md`, `FRD.md`, `COMPLETION_REPORT.md`. 누락 시 책임 에이전트 명시.
 
 ### 1.5 인터랙션 누락 4유형 점검 (★afneyeclinic 회귀 — 단일 스냅샷 맹점)
 `09-runtime-interactions.md`가 **개선된 스크립트 최신본**인지부터 확인(09에 "섹션별 인터랙션 인벤토리"·"스크롤 연동 요소"·**"커버리지 자가진단"** 섹션이 없으면 stale → 재수집 요청, blocker). 그 다음 산출물이 다음을 빠뜨리지 않았는지 교차 확인:
@@ -70,6 +70,20 @@ grep -cE "^## 레시피 [0-9]+" output/{site}/BENCHMARK_RECIPE.md
 grep -cE "^(###|##) " output/{site}/MASTER_REPLICATION_PROMPT.md
 grep -qE "빌드 에이전트 구성|역할별" output/{site}/MASTER_REPLICATION_PROMPT.md && echo "역할가이드 OK" || echo "역할가이드 누락"
 grep -qE "데모|가상|실제 의료기관 정보가 아닙니다" output/{site}/MASTER_REPLICATION_PROMPT.md && echo "면책 OK" || echo "면책 누락"
+```
+
+### 6.5 FRD 정합성 (구현 단일 정답 소스 보증)
+`FRD.md`가 `references/frd-format.md`(benchmark-recipe 스킬) 골격·표기 철칙을 지켰는가:
+- **★실측 근거:** FRD의 ★표기 항목을 표본 추출(최소 5건)해 `09-runtime-interactions.md`에 실제 근거가 있는지 대조 — 근거 없는 ★는 환각, blocker.
+- **페이지 전수:** §6.0 As-Is 매트릭스의 페이지 수가 pages.json 실페이지 수(정규화 중복 제거 후)와 일치하는가 — 누락 페이지 있으면 warning, 핵심 페이지(GNB 노출) 누락은 blocker.
+- **콘텐츠 verbatim 전수:** 09의 숨김 모달 인벤토리·Swiper 연동 패널 N종·자가진단 문항이 FRD §5/§6/부록에 반영됐는가 — 연동 패널 N종을 1개로 축소 시 blocker(1.5-(A)와 동일 기준).
+- **커버리지 승계:** 09 "커버리지 자가진단"에 미탐 잔여가 있으면 FRD 헤더에 ⚠️ 미탐 명시가 있는가 — 미명시면 warning.
+- **표기 규약:** `[추정]`/`[미확인]` 없이 단정한 비실측 값이 있는지 표본 점검. §0~§9 + 부록 A/B가 모두 존재하는가.
+
+```bash
+grep -c "★" output/{site}/FRD.md   # ★ 사용량 — 0이면 실측 미반영 의심
+grep -qE "^## 9\.|인수 기준" output/{site}/FRD.md && echo "인수기준 OK" || echo "인수기준 누락"
+grep -qE "\[추정|\[미확인" output/{site}/FRD.md && echo "표기규약 사용됨" || echo "표기규약 미사용 — 전량 단정 의심"
 ```
 
 ### 7. 한국어 품질
