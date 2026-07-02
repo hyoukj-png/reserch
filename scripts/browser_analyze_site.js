@@ -12,7 +12,7 @@ const { URL } = require("url");
 const { chromium } = require("playwright");
 
 const DEFAULT_MAX_PAGES = 8;
-const DEFAULT_MAX_CLICKS = 14;
+const DEFAULT_MAX_CLICKS = 24;
 const BASE_DIR = path.resolve(__dirname, "..");
 const OUTPUT_BASE = path.join(BASE_DIR, "output");
 
@@ -98,10 +98,18 @@ function loadPages(outputDir, baseUrl, maxPages) {
   if (fs.existsSync(pagesJson)) {
     try {
       const data = JSON.parse(fs.readFileSync(pagesJson, "utf8"));
-      const pages = (data.pages || [])
-        .map((page) => page.url)
-        .filter(Boolean)
-        .slice(0, maxPages);
+      // 정규화 중복 제거 — pages.json에 /path 와 /path/ 가 함께 있으면 페이지 예산(maxPages)이 중복으로 소진돼
+      // 뒤쪽의 실제 다른 페이지가 수집에서 밀려난다.
+      const seen = new Set();
+      const pages = [];
+      for (const page of data.pages || []) {
+        if (!page.url) continue;
+        const norm = page.url.replace(/\/+$/, "").toLowerCase();
+        if (seen.has(norm)) continue;
+        seen.add(norm);
+        pages.push(page.url);
+        if (pages.length >= maxPages) break;
+      }
       if (pages.length) return pages;
     } catch (error) {
       console.warn(`pages.json 읽기 실패, URL 단일 분석으로 진행: ${error.message}`);
@@ -183,6 +191,8 @@ async function collectPageSignals(page) {
         ariaExpanded: el.getAttribute("aria-expanded") || "",
         ariaControls: el.getAttribute("aria-controls") || "",
         onclick: el.getAttribute("onclick") || "",
+        dataToggle: el.getAttribute("data-toggle") || el.getAttribute("data-bs-toggle") || "",
+        dataTarget: el.getAttribute("data-target") || el.getAttribute("data-bs-target") || "",
       }))
       .filter((item) => {
         const href = item.href.toLowerCase();
@@ -191,7 +201,12 @@ async function collectPageSignals(page) {
         return item.text || item.onclick || item.role || item.ariaControls || href.startsWith("#") || href.startsWith("javascript:");
       });
 
-    const dialogs = [...document.querySelectorAll([
+    const longTextOf = (el) => (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
+
+    // 모달/레이어 전수 수집 — visible 필터를 걸기 전에 DOM에 존재하는 모든 모달 후보를 잡는다.
+    // display:none 상태의 숨김 모달을 초기 인벤토리에서 놓치면(과거 "모달 0개" 오탐) 트리거 미클릭 시 완전 누락되므로,
+    // 숨김 모달은 본문 전문 + 트리거 역매핑까지 실측해 hiddenDialogs로 보존한다.
+    const allDialogEls = [...document.querySelectorAll([
       "dialog",
       "[role='dialog']",
       "[aria-modal='true']",
@@ -203,14 +218,52 @@ async function collectPageSignals(page) {
       ".modals",
       ".modal-wrap",
       ".modal_pop",
+      "[id*='modal']",
+      "[id*='popup']",
+      "[id*='layer']",
+      "[class*='modal']",
+      "[class*='popup']",
     ].join(","))]
+      .filter((el, _, arr) => !arr.some((other) => other !== el && other.contains(el)))
+      .filter((el) => longTextOf(el).length > 10);
+
+    const dialogs = allDialogEls
       .filter(visible)
       .map((el) => ({
         selector: selectorOf(el),
-        text: textOf(el),
+        text: longTextOf(el).slice(0, 300),
         className: el.className || "",
         id: el.id || "",
       }));
+
+    const hiddenDialogs = allDialogEls
+      .filter((el) => !visible(el))
+      .slice(0, 30)
+      .map((el) => {
+        const id = el.id || "";
+        const mainClass = [...el.classList].find((cls) => /modal|popup|layer|pop/i.test(cls)) || el.classList[0] || "";
+        let triggers = [];
+        if (id) {
+          triggers = [...document.querySelectorAll(
+            `[aria-controls="${CSS.escape(id)}"],[data-target="#${CSS.escape(id)}"],[data-bs-target="#${CSS.escape(id)}"],a[href="#${CSS.escape(id)}"]`
+          )];
+        }
+        const needle = id || mainClass;
+        if (needle && !triggers.length) {
+          [...document.querySelectorAll("[onclick],a[href^='javascript:']")].forEach((t) => {
+            const code = `${t.getAttribute("onclick") || ""} ${t.getAttribute("href") || ""}`;
+            if (code.includes(needle) && !el.contains(t)) triggers.push(t);
+          });
+        }
+        return {
+          selector: selectorOf(el),
+          id,
+          className: (el.className || "").toString().slice(0, 60),
+          textLength: longTextOf(el).length,
+          text: longTextOf(el).slice(0, 500),
+          triggers: triggers.filter(visible).slice(0, 3).map((t) => ({ selector: selectorOf(t), text: textOf(t) })),
+        };
+      });
 
     const forms = [...document.forms].map((form) => ({
       action: form.getAttribute("action") || "",
@@ -346,6 +399,7 @@ async function collectPageSignals(page) {
         const expandHint = /\b(width|flex|transform)\b/.test(trans) || cs0.cursor === "pointer" || cs0.flexGrow !== "0";
         found.push({
           type: expandHint ? "가로 확장/셀렉터 패널(hover·click 펼침 추정)" : "가로 풀높이 패널 행(슬라이더/셀렉터 후보)",
+          selector: selectorOf(el),
           container: (el.className || "").toString().slice(0, 36) || el.tagName,
           panelCount: kids.length,
           panelWidth: Math.round(avgW),
@@ -454,12 +508,20 @@ async function collectPageSignals(page) {
       try {
         const all = [...document.querySelectorAll('section,[class*="sec"],[id^="st"],[class*="section"]')]
           .filter((el) => el.offsetParent !== null && el.getBoundingClientRect().height > 120);
-        const tops = all.filter((el) => !all.some((o) => o !== el && o.contains(el)));
+        let tops = all.filter((el) => !all.some((o) => o !== el && o.contains(el)));
+        // 폴백: sec/section 클래스 규약을 안 쓰는 사이트에서 인벤토리가 통째로 비는 것을 방지 —
+        // main(없으면 body) 직계 자식 중 충분히 큰 블록을 섹션으로 간주한다.
+        if (tops.length < 2) {
+          const rootEl = document.querySelector("main") || document.body;
+          tops = [...rootEl.children].filter((el) =>
+            !/^(HEADER|FOOTER|NAV|SCRIPT|STYLE|LINK)$/.test(el.tagName) &&
+            el.getBoundingClientRect().height > 200);
+        }
         const headingOf = (el) => {
           const h = el.querySelector('h1,h2,h3,[class*="tit"]');
           return h ? (h.textContent || "").replace(/\s+/g, " ").trim().slice(0, 30) : "";
         };
-        return tops.slice(0, 24).map((el) => {
+        return tops.slice(0, 30).map((el) => {
           const aos = {};
           el.querySelectorAll("[data-aos]").forEach((e) => { const t = e.getAttribute("data-aos"); if (t) aos[t] = (aos[t] || 0) + 1; });
           const swipers = [...el.querySelectorAll(".swiper, .swiper-container")]
@@ -485,6 +547,14 @@ async function collectPageSignals(page) {
       } catch (e) { return []; }
     })();
 
+    // 상태 지문 — changedEnough가 url/bodyClass/dialog 수만 보면 탭·아코디언(클래스 토글형 콘텐츠 교체)을
+    // "무변화"로 오판하므로, visible 텍스트량·active류 클래스 수·다이얼로그 본문을 함께 비교한다.
+    const stateFingerprint = {
+      visibleTextLength: (document.body.innerText || "").replace(/\s+/g, "").length,
+      activeClassCount: document.querySelectorAll(".active,.on,.open,.show,.current,[aria-selected='true']").length,
+      visibleDialogTexts: dialogs.map((d) => d.text.slice(0, 60)).join("|").slice(0, 400),
+    };
+
     return {
       title: document.title,
       url: location.href,
@@ -493,6 +563,8 @@ async function collectPageSignals(page) {
       bodyClass: document.body.className || "",
       clickables,
       dialogs,
+      hiddenDialogs,
+      stateFingerprint,
       forms,
       designSignals,
       interactionPatterns,
@@ -508,43 +580,165 @@ async function collectPageSignals(page) {
 
 // 스크롤 연동 요소 검출 — 여러 스크롤 위치에서 inline 스타일(transform/right/left/top)이 변하는 요소를 찾는다.
 // 단일 스냅샷(collectPageSignals)이 구조적으로 놓치는 패럴랙스/스크롤 드리프트(.big_size 가로 이동 등)를 포착한다.
+// 후보를 위치마다 재수집·키 병합하므로, 스크롤 후에야 inline 스타일을 받기 시작하는 요소도 놓치지 않는다.
 async function collectScrollLinked(page) {
   try {
-    await page.evaluate(() => {
-      window.__sl = [...document.querySelectorAll("*")].filter((e) => {
+    const snapshotAt = () => page.evaluate(() => {
+      const out = {};
+      let taken = 0;
+      for (const e of document.querySelectorAll("*")) {
+        if (taken > 300) break;
         const s = e.getAttribute("style") || "";
+        if (!/(transform|right|left|top)\s*:/.test(s)) continue;
         const cls = (e.className || "").toString();
-        return /(transform|right|left|top)\s*:/.test(s) && !/swiper-wrapper|swiper-slide/.test(cls);
-      }).slice(0, 500);
+        // 리빌 완료(aos)·슬라이더 내부 이동은 스크롤 연동 모션이 아니므로 제외
+        if (/swiper-wrapper|swiper-slide|aos-init|aos-animate/.test(cls) || e.hasAttribute("data-aos")) continue;
+        const sec = e.closest('[class*="sec"],section');
+        const secKey = sec ? `${sec.id || ""} ${(sec.className || "").toString().slice(0, 14)}`.trim() : "";
+        const key = `${e.tagName}.${cls.split(/\s+/).slice(0, 2).join(".")}@${secKey}`;
+        if (out[key]) continue;
+        const g = (re) => { const m = s.match(re); return m ? m[1].trim() : ""; };
+        out[key] = {
+          sec: secKey,
+          cls: cls.slice(0, 24),
+          transform: g(/transform:\s*([^;]+)/),
+          right: g(/right:\s*([^;]+)/),
+          left: g(/left:\s*([^;]+)/),
+          top: g(/top:\s*([^;]+)/),
+        };
+        taken += 1;
+      }
+      return out;
     });
-    const snap = () => page.evaluate(() => window.__sl.map((e) => {
-      const s = e.getAttribute("style") || "";
-      const g = (re) => { const m = s.match(re); return m ? m[1].trim() : ""; };
-      const sec = e.closest('[class*="sec"],section');
-      return {
-        sec: sec ? ((sec.id || "") + " " + (sec.className || "").toString().slice(0, 14)).trim() : "",
-        cls: (e.className || "").toString().slice(0, 24),
-        transform: g(/transform:\s*([^;]+)/),
-        right: g(/right:\s*([^;]+)/),
-        top: g(/top:\s*([^;]+)/),
-      };
-    }));
     const snaps = [];
-    for (const f of [0, 0.35, 0.7]) {
-      await page.evaluate((y) => window.scrollTo(0, document.body.scrollHeight * y), f);
-      await page.waitForTimeout(600);
-      snaps.push(await snap());
+    for (const f of [0, 0.25, 0.5, 0.75, 1]) {
+      await page.evaluate((y) => window.scrollTo(0, Math.max(0, document.body.scrollHeight - innerHeight) * y), f);
+      await page.waitForTimeout(500);
+      snaps.push(await snapshotAt());
     }
     await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+    await page.waitForTimeout(400);
+    const keys = new Set();
+    snaps.forEach((s) => Object.keys(s).forEach((k) => keys.add(k)));
     const out = [];
-    const n = (snaps[0] || []).length;
-    for (let i = 0; i < n; i++) {
-      const seq = snaps.map((s) => s[i]).filter(Boolean);
+    for (const key of keys) {
+      if (out.length >= 20) break;
+      const seq = snaps.map((s) => s[key]).filter(Boolean);
       if (seq.length < 2) continue;
-      const prop = ["right", "transform", "top"].find((p) => new Set(seq.map((v) => v[p])).size > 1);
+      const prop = ["right", "left", "top", "transform"].find((p) => new Set(seq.map((v) => v[p])).size > 1);
       if (prop) out.push({ sec: seq[0].sec, cls: seq[0].cls, prop, from: seq[0][prop], to: seq[seq.length - 1][prop] });
     }
-    return out.slice(0, 20);
+    return out;
+  } catch (e) { return []; }
+}
+
+// Swiper 상태 순회 — 슬라이드 N장을 slideTo로 전부 순회하며, 슬라이드에 연동되어 가시성이 바뀌는
+// "외부 콘텐츠 패널"(예: 장비소개 .equip_content 13종)을 상태별로 전문 캡처한다.
+// 정적·1패스 수집이 active 1개만 담는 문제(누락 유형 A)의 근본 해결.
+async function traverseSwipers(page) {
+  try {
+    return await page.evaluate(async () => {
+      const visible = (el) => {
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return style.visibility !== "hidden" && style.display !== "none" &&
+          Number(style.opacity || "1") > 0.05 && rect.width > 0 && rect.height > 0;
+      };
+      const clean = (t) => (t || "").replace(/\s+/g, " ").trim();
+      const results = [];
+      const swipers = [...document.querySelectorAll(".swiper, .swiper-container")]
+        .filter((el) => el.swiper && !(el.parentElement && el.parentElement.closest(".swiper, .swiper-container")));
+      // 순회 안정화: 모든 autoplay 정지 — 순회 중 다른 스와이퍼가 돌면 연동 오판·상태 오염이 생긴다
+      swipers.forEach((el) => { try { if (el.swiper.autoplay) el.swiper.autoplay.stop(); } catch (e) {} });
+      let stateBudget = 48; // 페이지당 총 상태 캡처 상한(런타임 폭주 방지)
+      for (const el of swipers.slice(0, 6)) {
+        const s = el.swiper;
+        const slides = el.querySelectorAll(".swiper-slide:not(.swiper-slide-duplicate)").length;
+        if (slides < 2 || stateBudget < 2) continue;
+        // 외부 연동 패널 후보: 모든 swiper 바깥의 콘텐츠성 요소
+        // (다른 swiper 내부는 그 swiper의 자체 순회가 커버 — 자동재생 fade가 노이즈로 잡히는 것 방지)
+        const candidates = [...document.querySelectorAll(
+          "[class*='cont'],[class*='panel'],[class*='desc'],[class*='info'],[class*='detail'],[class*='txt'],[class*='item']"
+        )].filter((c) => !c.closest(".swiper, .swiper-container") && clean(c.textContent).length > 20).slice(0, 400);
+        const snapVis = () => candidates.map((c) => visible(c));
+        const snapText = () => candidates.map((c) => clean(c.innerText).slice(0, 260));
+        // 시간 구동 노이즈 사전 제거: 슬라이드를 움직이지 않은 두 샘플 사이에 가시성/텍스트가 변한 요소
+        // (티커, AOS 리빌 진행 중 등)는 슬라이드 연동으로 오판하지 않는다.
+        const vis0 = snapVis(); const text0 = snapText();
+        await new Promise((resolve) => setTimeout(resolve, 450));
+        const vis1 = snapVis(); const text1 = snapText();
+        const timeDriven = candidates.map((_, idx) => vis0[idx] !== vis1[idx] || text0[idx] !== text1[idx]);
+        const n = Math.min(slides, 16, stateBudget);
+        stateBudget -= n;
+        const visMatrix = [];
+        const textMatrix = [];
+        const fullTexts = new Array(candidates.length).fill("");
+        const states = [];
+        for (let i = 0; i < n; i += 1) {
+          try { (s.slideToLoop || s.slideTo).call(s, i, 0); } catch (e) { try { s.slideTo(i, 0); } catch (_) {} }
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          const vis = snapVis();
+          vis.forEach((v, idx) => { if (v && !fullTexts[idx]) fullTexts[idx] = clean(candidates[idx].innerText).slice(0, 400); });
+          visMatrix.push(vis);
+          textMatrix.push(snapText());
+          const active = el.querySelector(".swiper-slide-active");
+          states.push({ index: i, activeSlideText: active ? clean(active.innerText).slice(0, 160) : "" });
+        }
+        try { (s.slideToLoop || s.slideTo).call(s, 0, 0); } catch (e) {}
+        const linkedPanels = [];
+        // (a) 노출 전환형: 슬라이드에 따라 가시성이 변한 패널(상태별 show/hide) — 바깥 요소 우선
+        candidates.forEach((c, idx) => {
+          if (timeDriven[idx]) return;
+          const seq = visMatrix.map((row) => row[idx]);
+          if (new Set(seq).size < 2) return;
+          // 절반 넘는 상태에서 계속 보이면 슬라이드 연동이 아니라 일회성 리빌(AOS 등)로 판단
+          if (seq.filter(Boolean).length > Math.max(1, Math.ceil(n / 2))) return;
+          if (linkedPanels.some((p) => p.el.contains(c))) return; // 중첩 자손 제거
+          linkedPanels.push({
+            el: c,
+            mode: "show-hide",
+            cls: (c.className || "").toString().slice(0, 40),
+            visibleAtStates: seq.map((v, stateIdx) => (v ? stateIdx : -1)).filter((v) => v >= 0).slice(0, 6),
+            text: fullTexts[idx],
+          });
+        });
+        // (b) 내용 교체형: 요소는 그대로인데 슬라이드에 따라 innerText가 교체 주입되는 패널
+        // (예: slideChange 핸들러가 .equip_content .u1/.u2/.u3을 배열로 스왑 — 가시성 diff로는 절대 안 잡힘)
+        const swapIdx = [];
+        candidates.forEach((c, idx) => {
+          if (timeDriven[idx]) return;
+          if (new Set(textMatrix.map((row) => row[idx])).size < 2) return;
+          swapIdx.push(idx);
+        });
+        // 조상·자손이 함께 변하면 가장 안쪽 요소만 남긴다(조상은 거대 텍스트 중복)
+        const innermost = swapIdx.filter((idx) =>
+          !swapIdx.some((other) => other !== idx && candidates[idx].contains(candidates[other])));
+        innermost.slice(0, 10).forEach((idx) => {
+          const c = candidates[idx];
+          if (linkedPanels.some((p) => p.el === c)) return;
+          const stateTexts = [];
+          textMatrix.forEach((row, stateIdx) => {
+            const t = row[idx];
+            if (t && !stateTexts.some((st) => st.text === t)) stateTexts.push({ state: stateIdx, text: t });
+          });
+          linkedPanels.push({
+            el: c,
+            mode: "content-swap",
+            cls: (c.className || "").toString().slice(0, 40),
+            stateTexts: stateTexts.slice(0, 16),
+          });
+        });
+        const cls = (el.className || "").toString().split(/\s+/).filter((c) => c && !/^swiper/.test(c)).slice(0, 2).join(" ") || "swiper";
+        results.push({
+          cls,
+          slides,
+          statesCaptured: n,
+          states,
+          linkedPanels: linkedPanels.slice(0, 24).map(({ el: _unused, ...rest }) => rest),
+        });
+      }
+      return results;
+    });
   } catch (e) { return []; }
 }
 
@@ -554,12 +748,150 @@ function changedEnough(before, after) {
   if ((before.dialogs || []).length !== (after.dialogs || []).length) return true;
   const beforeExpanded = (before.clickables || []).filter((item) => item.ariaExpanded === "true").length;
   const afterExpanded = (after.clickables || []).filter((item) => item.ariaExpanded === "true").length;
-  return beforeExpanded !== afterExpanded;
+  if (beforeExpanded !== afterExpanded) return true;
+  // 클래스 토글형 콘텐츠 교체(탭·아코디언) — url/dialog 수가 안 변해도 상태 지문으로 감지
+  const bf = before.stateFingerprint || {};
+  const af = after.stateFingerprint || {};
+  if (Math.abs((af.visibleTextLength || 0) - (bf.visibleTextLength || 0)) > 120) return true;
+  if ((af.activeClassCount || 0) !== (bf.activeClassCount || 0)) return true;
+  if ((af.visibleDialogTexts || "") !== (bf.visibleDialogTexts || "")) return true;
+  return false;
 }
 
-async function exploreClicks(context, url, initialSignals, pageDir, maxClicks) {
+// 클릭 후보 우선순위화 — DOM 순서 상위 N개(헤더 내비 링크가 예산 소진 → 본문 모달/탭 미클릭)가
+// 모달 누락의 최대 원인이었다. 순수 페이지 이동 링크(크롤러가 이미 커버)는 제외하고,
+// 숨김 모달 트리거 > onclick/js: > aria/data 토글 > tab/button > #앵커 순으로 예산을 배분한다.
+function prioritizeClickCandidates(initial, baseUrl, maxClicks) {
+  const triggerSelectors = new Set();
+  const triggerTexts = new Set();
+  (initial.hiddenDialogs || []).forEach((d) => (d.triggers || []).forEach((t) => {
+    if (t.selector) triggerSelectors.add(t.selector);
+    if (t.text) triggerTexts.add(t.text);
+  }));
+  const seen = new Set();
+  const scored = [];
+  for (const c of initial.clickables || []) {
+    const href = (c.href || "").trim();
+    const key = [c.text, href, c.onclick, c.ariaControls, c.dataTarget].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (href && !href.startsWith("#") && !/^javascript:/i.test(href)) {
+      let isNav = false;
+      try {
+        const u = new URL(href, baseUrl);
+        isNav = !c.onclick && !c.ariaControls && !c.dataToggle && !u.hash;
+      } catch (_) {}
+      if (isNav) continue; // 페이지 이동 링크 — 페이지 단위 수집이 커버
+    }
+    let score = 0;
+    if (triggerSelectors.has(c.selector) || (c.text && triggerTexts.has(c.text))) score += 50;
+    if (c.onclick || /^javascript:/i.test(href)) score += 30;
+    if (c.ariaControls || c.dataToggle || c.dataTarget) score += 25;
+    if (c.role === "tab" || c.role === "button" || c.tag === "button") score += 20;
+    if (c.ariaExpanded) score += 15;
+    if (href.startsWith("#") && href.length > 1) score += 10;
+    // 슬라이더 내비(bullet/화살표)는 traverseSwipers가 전수 순회하므로 클릭 예산에서 후순위
+    if (/swiper-pagination|swiper-button|slick-/.test(c.selector)) score -= 25;
+    scored.push({ ...c, score });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return { selected: scored.slice(0, maxClicks), dropped: scored.slice(maxClicks) };
+}
+
+// 가로 확장 패널 실측 — interactionPatterns 후보에 실제 hover하여 폭 변화(확장 아코디언 여부)와
+// 펼침 시 드러나는 콘텐츠를 캡처한다. "카드 그리드 오판"을 기하 추정이 아닌 실측으로 확정.
+async function exploreHoverPanels(page, patterns, pageDir) {
   const results = [];
-  const candidates = (initialSignals.clickables || []).slice(0, maxClicks);
+  const targets = (patterns || []).slice(0, 3);
+  for (let pi = 0; pi < targets.length; pi += 1) {
+    const pattern = targets[pi];
+    if (!pattern.selector) continue;
+    try {
+      const container = page.locator(pattern.selector).first();
+      await container.scrollIntoViewIfNeeded({ timeout: 4000 }).catch(() => {});
+      await page.waitForTimeout(400);
+      const kids = container.locator("> *");
+      const count = Math.min(await kids.count(), 6);
+      const panels = [];
+      let screenshot = "";
+      for (let i = 0; i < count; i += 1) {
+        const child = kids.nth(i);
+        const before = await child.boundingBox();
+        if (!before || before.width < 40) continue;
+        await child.hover({ timeout: 3000 }).catch(() => {});
+        await page.waitForTimeout(600);
+        const after = await child.boundingBox();
+        const expanded = !!(after && after.width > before.width * 1.12);
+        let expandedText = "";
+        if (expanded) {
+          expandedText = ((await child.innerText().catch(() => "")) || "").replace(/\s+/g, " ").trim().slice(0, 300);
+          if (!screenshot) {
+            screenshot = path.join(pageDir, `hover-panel-${pi + 1}.png`);
+            await page.screenshot({ path: screenshot }).catch(() => {});
+          }
+        }
+        panels.push({
+          index: i,
+          widthBefore: Math.round(before.width),
+          widthAfter: after ? Math.round(after.width) : 0,
+          expanded,
+          expandedText,
+        });
+      }
+      await page.mouse.move(0, 0).catch(() => {});
+      results.push({
+        container: pattern.container,
+        heading: pattern.heading || "",
+        hoverExpands: panels.some((p) => p.expanded),
+        panels,
+        screenshot: screenshot ? path.relative(path.dirname(pageDir), screenshot).split(path.sep).join("/") : "",
+      });
+    } catch (error) {
+      results.push({ container: pattern.container, error: error.message });
+    }
+  }
+  return results;
+}
+
+// 커버리지 자가진단 — "무엇을 못 봤는가"를 산출물에 남겨 누락이 침묵 속에 발생하지 않게 한다.
+// QA는 이 수치(미오픈 모달·미순회 Swiper·미탐 클릭 후보)로 재수집 필요를 판단한다.
+function buildCoverage(initial, clickPlan, clickStates, swiperStates, hoverPanels, swipersFoundTotal) {
+  const openedDialogSelectors = new Set();
+  const openedDialogTexts = [];
+  clickStates.forEach((st) => (st.visibleDialogs || []).forEach((d) => {
+    openedDialogSelectors.add(d.selector);
+    if (d.text) openedDialogTexts.push(d.text.slice(0, 60));
+  }));
+  // 열림 판정은 selector 일치 + 본문 접두 일치 병행 — 모달이 열리며 상태 클래스가 붙으면 selector가 달라진다
+  const wasOpened = (d) => openedDialogSelectors.has(d.selector) ||
+    (!!d.text && openedDialogTexts.some((t) => t.length > 20 && d.text.startsWith(t.slice(0, 40))));
+  const hidden = initial.hiddenDialogs || [];
+  const swipersFound = swipersFoundTotal != null
+    ? swipersFoundTotal
+    : (initial.sectionInteractions || []).reduce((sum, s) => sum + (s.swipers || []).filter((w) => (w.slides || 0) > 1).length, 0);
+  return {
+    clickablesFound: (initial.clickables || []).length,
+    clickCandidates: clickPlan.selected.length,
+    clicksExplored: clickStates.length,
+    clicksChanged: clickStates.filter((st) => st.changed).length,
+    hiddenDialogsFound: hidden.length,
+    hiddenDialogsWithTrigger: hidden.filter((d) => (d.triggers || []).length).length,
+    dialogsOpenedByClick: openedDialogSelectors.size,
+    dialogsUnopened: hidden
+      .filter((d) => !wasOpened(d))
+      .slice(0, 15)
+      .map((d) => ({ selector: d.selector, textLength: d.textLength, hasTrigger: (d.triggers || []).length > 0 })),
+    swipersFound,
+    swipersTraversed: (swiperStates || []).length,
+    swiperStatesCaptured: (swiperStates || []).reduce((sum, s) => sum + (s.statesCaptured || 0), 0),
+    hoverPanelGroupsFound: (initial.interactionPatterns || []).length,
+    hoverPanelGroupsVerified: (hoverPanels || []).filter((h) => !h.error).length,
+    unexploredCandidates: clickPlan.dropped.slice(0, 15).map((c) => c.text || c.onclick || c.selector),
+  };
+}
+
+async function exploreClicks(context, url, candidates, pageDir) {
+  const results = [];
 
   for (let i = 0; i < candidates.length; i += 1) {
     const candidate = candidates[i];
@@ -573,6 +905,8 @@ async function exploreClicks(context, url, initialSignals, pageDir, maxClicks) {
 
     try {
       await gotoStable(page, url);
+      // 진입 팝업(지연 노출)이 before 스냅샷 이후에 뜨면 모든 클릭이 "모달 열림"으로 오검출되므로 안정화 대기
+      await page.waitForTimeout(900);
       const before = await collectPageSignals(page);
       const locator = page.locator(candidate.selector).first();
       await locator.scrollIntoViewIfNeeded({ timeout: 4000 }).catch(() => {});
@@ -587,12 +921,16 @@ async function exploreClicks(context, url, initialSignals, pageDir, maxClicks) {
         screenshot = path.join(pageDir, `state-${String(i + 1).padStart(2, "0")}.png`);
         await page.screenshot({ path: screenshot, fullPage: true }).catch(() => {});
       }
+      // 클릭으로 새로 열린 다이얼로그 — 존재 여부만이 아니라 본문을 남긴다(분석가 창작 방지)
+      const beforeDialogSelectors = new Set((before.dialogs || []).map((d) => d.selector));
+      const newDialogs = (after.dialogs || []).filter((d) => !beforeDialogSelectors.has(d.selector));
       results.push({
         candidate,
         changed,
         afterUrl: after.url,
         bodyClass: after.bodyClass,
         visibleDialogs: after.dialogs,
+        newDialogs,
         consoleErrors,
         screenshot: screenshot ? path.relative(path.dirname(pageDir), screenshot).split(path.sep).join("/") : "",
       });
@@ -738,19 +1076,77 @@ function markdownReport({ baseUrl, pages, generatedAt }) {
         if (t.context) lines.push(`  - 맥락/판정: ${t.context}`);
       });
     }
+    const hiddenDialogs = page.initial.hiddenDialogs || [];
+    if (hiddenDialogs.length) {
+      lines.push("");
+      lines.push("### 숨김 모달/레이어 인벤토리 (★ display:none 포함 전수 — 클릭 전에도 본문 실측)");
+      lines.push("> 초기 상태에서 숨겨진 모달·레이어를 DOM에서 전수 수집했다. **\"모달 0개\"로 단정 금지** — 클릭으로 열리지 않았어도 본문·트리거가 아래에 실측돼 있으니 이것을 콘텐츠 근거로 사용하라.");
+      hiddenDialogs.forEach((d) => {
+        const triggers = (d.triggers || []).map((t) => `"${t.text || t.selector}"`).join(", ") || "미확인";
+        lines.push(`- \`${d.id ? `#${d.id}` : d.selector}\` (본문 ${d.textLength}자) · 트리거: ${triggers}`);
+        if (d.text) lines.push(`  - 본문: ${d.text.slice(0, 240)}`);
+      });
+    }
+    const swiperStates = page.swiperStates || [];
+    if (swiperStates.length) {
+      lines.push("");
+      lines.push("### Swiper 상태 순회 (★ 슬라이드 N장 전수 — active 1개 스냅샷 아님)");
+      lines.push("> 각 슬라이드를 slideTo로 순회하며 캡처했다. `연동 패널` = 슬라이드에 따라 **외부 영역에 교체 주입되는 콘텐츠**(장비 상세 등). **이 목록이 곧 해당 섹션의 전체 콘텐츠 인벤토리다 — 1개만 반영하면 누락.**");
+      swiperStates.forEach((s) => {
+        lines.push(`- **\`${s.cls}\`** — ${s.slides}장 중 ${s.statesCaptured}개 상태 순회 · 연동 패널 ${(s.linkedPanels || []).length}개`);
+        (s.states || []).forEach((st) => {
+          if (st.activeSlideText) lines.push(`  - 슬라이드 ${st.index + 1}: ${st.activeSlideText.slice(0, 120)}`);
+        });
+        (s.linkedPanels || []).forEach((p) => {
+          if (p.mode === "content-swap") {
+            lines.push(`  - 연동 패널(내용 교체) \`${p.cls}\` — 슬라이드마다 텍스트가 교체 주입됨. 상태별 전문:`);
+            (p.stateTexts || []).forEach((st) => lines.push(`    - 상태 ${st.state + 1}: ${st.text}`));
+          } else {
+            lines.push(`  - 연동 패널(노출 전환) \`${p.cls}\` (상태 ${(p.visibleAtStates || []).map((v) => v + 1).join(",")}): ${p.text ? p.text.slice(0, 220) : ""}`);
+          }
+        });
+      });
+    }
+    const hoverPanels = page.hoverPanels || [];
+    if (hoverPanels.length) {
+      lines.push("");
+      lines.push("### 호버 확장 패널 실측 (★ 카드 그리드 오판 방지)");
+      hoverPanels.forEach((h) => {
+        if (h.error) { lines.push(`- \`${h.container}\` — 실측 실패: ${h.error}`); return; }
+        lines.push(`- \`${h.container}\`${h.heading ? ` (${h.heading})` : ""} — hover 확장 ${h.hoverExpands ? "**확인(실측)**" : "무반응(클릭형/정적 추정)"}${h.screenshot ? ` · screenshot \`${h.screenshot}\`` : ""}`);
+        (h.panels || []).filter((p) => p.expanded).forEach((p) => {
+          lines.push(`  - 패널 ${p.index + 1}: ${p.widthBefore}px → ${p.widthAfter}px${p.expandedText ? ` · "${p.expandedText.slice(0, 150)}"` : ""}`);
+        });
+      });
+    }
     const changedStates = page.clickStates.filter((item) => item.changed);
     if (changedStates.length) {
       lines.push("");
       lines.push("### 클릭 후 변화");
-      for (const state of changedStates.slice(0, 10)) {
+      for (const state of changedStates.slice(0, 15)) {
         const label = state.candidate.text || state.candidate.onclick || state.candidate.selector;
         lines.push(`- "${label}" → URL: ${state.afterUrl}`);
         if (state.visibleDialogs && state.visibleDialogs.length) {
-          lines.push(`  - visible dialog: ${state.visibleDialogs.map((dialog) => dialog.text || dialog.selector).join(" / ")}`);
+          lines.push(`  - visible dialog: ${state.visibleDialogs.map((dialog) => dialog.text || dialog.selector).join(" / ").slice(0, 300)}`);
+        }
+        if (state.newDialogs && state.newDialogs.length) {
+          state.newDialogs.forEach((d) => lines.push(`  - 열린 모달 본문: ${(d.text || "").slice(0, 220)}`));
         }
         if (state.screenshot) {
           lines.push(`  - screenshot: \`${state.screenshot}\``);
         }
+      }
+    }
+    const cov = page.coverage;
+    if (cov) {
+      lines.push("");
+      lines.push("### 커버리지 자가진단 (★ QA 필수 확인 — 미탐이 남으면 재수집/추가 탐색)");
+      lines.push(`- 클릭: 후보 ${cov.clickablesFound}개 → 우선순위 선별 ${cov.clickCandidates}개 → 탐색 ${cov.clicksExplored}개 (변화 감지 ${cov.clicksChanged}개)`);
+      lines.push(`- 숨김 모달: ${cov.hiddenDialogsFound}개 발견(트리거 확인 ${cov.hiddenDialogsWithTrigger}개) · 클릭으로 열림 ${cov.dialogsOpenedByClick}개 — 미오픈이어도 본문은 위 인벤토리에 실측됨`);
+      lines.push(`- Swiper: ${cov.swipersFound}개 중 ${cov.swipersTraversed}개 순회 (총 ${cov.swiperStatesCaptured}개 상태)`);
+      lines.push(`- 확장 패널 후보: ${cov.hoverPanelGroupsFound}개 중 ${cov.hoverPanelGroupsVerified}개 hover 실측`);
+      if ((cov.unexploredCandidates || []).length) {
+        lines.push(`- ⚠️ **미탐 클릭 후보 ${cov.unexploredCandidates.length}개+** (\`--max-clicks\` 상향 재실행 권장): ${cov.unexploredCandidates.join(" / ").slice(0, 400)}`);
       }
     }
     if (page.consoleErrors.length) {
@@ -805,9 +1201,21 @@ async function inspectPage(browser, url, outputDir, options) {
   await page.screenshot({ path: path.join(outputDir, screenshots.pc), fullPage: true });
   const initial = await collectPageSignals(page);
   initial.scrollLinked = await collectScrollLinked(page);
+  const swiperStates = await traverseSwipers(page);
+  // 커버리지의 발견/순회 분모 일치용 — 문서 전체의 top-level·2장 이상 swiper 수(미인스턴스화 포함)
+  const swipersFoundTotal = await page.evaluate(() =>
+    [...document.querySelectorAll(".swiper, .swiper-container")]
+      .filter((el) => !(el.parentElement && el.parentElement.closest(".swiper, .swiper-container")) &&
+        el.querySelectorAll(".swiper-slide:not(.swiper-slide-duplicate)").length > 1).length
+  ).catch(() => null);
+  const hoverPanels = await exploreHoverPanels(page, initial.interactionPatterns, stateDir);
+  const clickPlan = options.clicks
+    ? prioritizeClickCandidates(initial, options.baseUrl, options.maxClicks)
+    : { selected: [], dropped: [] };
   const clickStates = options.clicks
-    ? await exploreClicks(context, url, initial, stateDir, options.maxClicks)
+    ? await exploreClicks(context, url, clickPlan.selected, stateDir)
     : [];
+  const coverage = buildCoverage(initial, clickPlan, clickStates, swiperStates, hoverPanels, swipersFoundTotal);
 
   await page.close().catch(() => {});
   await context.close().catch(() => {});
@@ -833,6 +1241,9 @@ async function inspectPage(browser, url, outputDir, options) {
     network: summarizeRequests(requests),
     consoleErrors,
     clickStates,
+    swiperStates,
+    hoverPanels,
+    coverage,
   };
 }
 
@@ -867,7 +1278,7 @@ async function main() {
         }));
       } catch (error) {
         console.warn(`  failed: ${error.message}`);
-        results.push({ url: pageUrl, error: error.message, initial: { title: "", clickables: [], dialogs: [], forms: [] }, screenshots: {}, network: { byType: {}, thirdParty: [] }, consoleErrors: [], clickStates: [] });
+        results.push({ url: pageUrl, error: error.message, initial: { title: "", clickables: [], dialogs: [], hiddenDialogs: [], forms: [] }, screenshots: {}, network: { byType: {}, thirdParty: [] }, consoleErrors: [], clickStates: [], swiperStates: [], hoverPanels: [], coverage: null });
       }
     }
   } finally {
